@@ -1,0 +1,28 @@
+{
+  "name": "dsh-brand",
+  "version": "1.0.0",
+  "description": "坚祥品牌标识：侧栏 LOGO 与品牌名替换（官方 sidebar.brand 槽）",
+  "type": "module",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "侧栏左上角显示坚祥标识与「坚祥数字助理」（替换官方鱼形 LOGO 与 DSH 文案）"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

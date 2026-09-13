@@ -1,0 +1,22 @@
+{
+  "name": "dsh-unread",
+  "version": "1.0.0",
+  "description": "会话未读标记：右键会话行标为未读，行首红点提示，点开自动清除（浏览器本地）",
+  "type": "module",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "右键侧栏会话行「标为未读」，行首显示红点，点开该会话自动清除（按会话标题记忆，浏览器本地）"
+  }
+}

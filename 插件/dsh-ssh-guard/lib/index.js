@@ -62,12 +62,18 @@ const CATASTROPHIC = [
 const DESTRUCTIVE_HINT = /\brm\b|\bdrop\b|\btruncate\b|\bdd\b/i;
 /** 远端命令是否含复杂结构（改写有风险，宁可放过）。 */
 const UNSAFE_TO_REWRITE = /[|<&`$()]/;
-/** 从 ssh 命令中提取远端载荷（最后一个 quoted 段或 host 之后的全部文本）。 */
+/** 从 ssh 命令中提取远端载荷及其前缀（前缀含 ssh、选项与 host，用于重组整条命令）。 */
 function extractSshPayload(command) {
-	const quotedTail = command.match(/(?:^|[\s;&|(])ssh\s[^;\n]*?\s("([^"\\]|\\.)*"|'([^'\\]|\\.)*')\s*$/);
-	if (quotedTail !== null) return stripQuotes(quotedTail[1] ?? "");
-	const bare = command.match(/(?:^|[\s;&|(])ssh\s+(?:-{1,2}[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s"']+))?\s+)*((?:[\w.-]+@)?[\w.\[\]:-]+)\s+(.+)$/);
-	if (bare !== null && bare[2] !== void 0) return stripQuotes(bare[2]);
+	const quotedTail = command.match(/((?:^|[\s;&|(])ssh\s[^;\n]*?\s)("([^"\\]|\\.)*"|'([^'\\]|\\.)*')\s*$/);
+	if (quotedTail !== null) return {
+		prefix: quotedTail[1] ?? "",
+		payload: stripQuotes(quotedTail[2] ?? "")
+	};
+	const bare = command.match(/((?:^|[\s;&|(])ssh\s+(?:-{1,2}[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s"']+))?\s+)*((?:[\w.-]+@)?[\w.\[\]:-]+)\s)(.+)$/);
+	if (bare !== null && bare[3] !== void 0) return {
+		prefix: bare[1] ?? "",
+		payload: stripQuotes(bare[3])
+	};
 }
 function stripQuotes(text) {
 	const t = text.trim();
@@ -94,19 +100,22 @@ function trashSegment(paths, config) {
 }
 function analyze(command, config) {
 	if (!REMOTE_CARRIER.test(command)) return { kind: "pass" };
-	const payload = extractSshPayload(command);
-	const scanText = payload ?? command;
+	const extracted = extractSshPayload(command);
+	const scanText = extracted?.payload ?? command;
 	for (const rule of CATASTROPHIC) if (rule.re.test(scanText)) return {
 		kind: "catastrophic",
 		reasonZh: rule.zh
 	};
-	if (payload !== void 0 && /\brm\b/.test(payload) && !UNSAFE_TO_REWRITE.test(payload)) {
-		const parsed = payload.split(/\s*(?:&&|;)\s*/).filter((segment) => segment.trim().length > 0).map((segment) => parseSimpleRm(segment));
-		if (parsed.length > 0 && parsed.every((part) => part !== void 0)) return {
-			kind: "rewrite",
-			rewritten: parsed.map((part) => trashSegment(part.paths, config)).join(" && "),
-			note: `[jx-ssh-guard] 你的远端 rm 命令已被安全改写为「移入远端回收站 ${config.trashDir}」（保留 ${config.retentionDays} 天后自动清理）。目标路径已从原位置移除，效果与删除一致；若确实要立即彻底删除，可对回收站内路径执行 rm。`
-		};
+	if (extracted !== void 0 && /\brm\b/.test(extracted.payload) && !UNSAFE_TO_REWRITE.test(extracted.payload)) {
+		const parsed = extracted.payload.split(/\s*(?:&&|;)\s*/).filter((segment) => segment.trim().length > 0).map((segment) => parseSimpleRm(segment));
+		if (parsed.length > 0 && parsed.every((part) => part !== void 0)) {
+			const newPayload = parsed.map((part) => trashSegment(part.paths, config)).join(" && ");
+			return {
+				kind: "rewrite",
+				rewritten: `${extracted.prefix}"${newPayload}"`,
+				note: `[jx-ssh-guard] 你的远端 rm 命令已被安全改写为「移入远端回收站 ${config.trashDir}」（保留 ${config.retentionDays} 天后自动清理）。目标路径已从原位置移除，效果与删除一致；若确实要立即彻底删除，可对回收站内路径执行 rm。`
+			};
+		}
 	}
 	if (DESTRUCTIVE_HINT.test(scanText)) return { kind: "reviewNeeded" };
 	return { kind: "pass" };

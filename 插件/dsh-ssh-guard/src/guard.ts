@@ -40,14 +40,18 @@ const DESTRUCTIVE_HINT = /\brm\b|\bdrop\b|\btruncate\b|\bdd\b/i
 /** 远端命令是否含复杂结构（改写有风险，宁可放过）。 */
 const UNSAFE_TO_REWRITE = /[|<&`$()]/
 
-/** 从 ssh 命令中提取远端载荷（最后一个 quoted 段或 host 之后的全部文本）。 */
-function extractSshPayload(command: string): string | undefined {
+/** 从 ssh 命令中提取远端载荷及其前缀（前缀含 ssh、选项与 host，用于重组整条命令）。 */
+function extractSshPayload(command: string): { prefix: string, payload: string } | undefined {
   // 形态一：整条以 quoted 远端命令结尾：ssh [选项] [user@]host "远端命令"
-  const quotedTail = command.match(/(?:^|[\s;&|(])ssh\s[^;\n]*?\s("([^"\\]|\\.)*"|'([^'\\]|\\.)*')\s*$/)
-  if (quotedTail !== null) return stripQuotes(quotedTail[1] ?? '')
+  const quotedTail = command.match(/((?:^|[\s;&|(])ssh\s[^;\n]*?\s)("([^"\\]|\\.)*"|'([^'\\]|\\.)*')\s*$/)
+  if (quotedTail !== null) {
+    return { prefix: quotedTail[1] ?? '', payload: stripQuotes(quotedTail[2] ?? '') }
+  }
   // 形态二：ssh [选项...] [user@]host 裸文本远端命令
-  const bare = command.match(/(?:^|[\s;&|(])ssh\s+(?:-{1,2}[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s"']+))?\s+)*((?:[\w.-]+@)?[\w.\[\]:-]+)\s+(.+)$/)
-  if (bare !== null && bare[2] !== undefined) return stripQuotes(bare[2])
+  const bare = command.match(/((?:^|[\s;&|(])ssh\s+(?:-{1,2}[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s"']+))?\s+)*((?:[\w.-]+@)?[\w.\[\]:-]+)\s)(.+)$/)
+  if (bare !== null && bare[3] !== undefined) {
+    return { prefix: bare[1] ?? '', payload: stripQuotes(bare[3]) }
+  }
   return undefined
 }
 
@@ -81,19 +85,21 @@ function trashSegment(paths: string[], config: GuardConfig): string {
 export function analyze(command: string, config: GuardConfig): Verdict {
   if (!REMOTE_CARRIER.test(command)) return { kind: 'pass' }
 
-  const payload = extractSshPayload(command)
+  const extracted = extractSshPayload(command)
   // 灾难级检测：载荷可提取时查载荷，否则保守地查整条命令
-  const scanText = payload ?? command
+  const scanText = extracted?.payload ?? command
   for (const rule of CATASTROPHIC) {
     if (rule.re.test(scanText)) return { kind: 'catastrophic', reasonZh: rule.zh }
   }
 
-  // rm → 回收站改写：仅当载荷可提取、整段由 rm 组成（; / && 连接）且无复杂结构
-  if (payload !== undefined && /\brm\b/.test(payload) && !UNSAFE_TO_REWRITE.test(payload)) {
-    const segments = payload.split(/\s*(?:&&|;)\s*/).filter(segment => segment.trim().length > 0)
+  // rm → 回收站改写：仅当载荷可提取、整段由 rm 组成（; / && 连接）且无复杂结构。
+  // 改写产物 = 原命令前缀（ssh/选项/host）+ 双引号包裹的新载荷（重写回完整本地命令）。
+  if (extracted !== undefined && /\brm\b/.test(extracted.payload) && !UNSAFE_TO_REWRITE.test(extracted.payload)) {
+    const segments = extracted.payload.split(/\s*(?:&&|;)\s*/).filter(segment => segment.trim().length > 0)
     const parsed = segments.map(segment => parseSimpleRm(segment))
     if (parsed.length > 0 && parsed.every(part => part !== undefined)) {
-      const rewritten = parsed.map(part => trashSegment(part!.paths, config)).join(' && ')
+      const newPayload = parsed.map(part => trashSegment(part!.paths, config)).join(' && ')
+      const rewritten = `${extracted.prefix}"${newPayload}"`
       return {
         kind: 'rewrite',
         rewritten,
