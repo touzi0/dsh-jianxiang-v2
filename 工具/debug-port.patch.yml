@@ -1,0 +1,12 @@
+[
+  {
+    "id": "webserver",
+    "config": {
+      "host": "127.0.0.1",
+      "port": 3081,
+      "compression": "gzip",
+      "compressionLevel": 1,
+      "compressionThresholdBytes": 1024
+    }
+  }
+]

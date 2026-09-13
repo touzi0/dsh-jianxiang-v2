@@ -1,0 +1,11 @@
+{
+  "name": "jx-demo-host",
+  "version": "1.0.0",
+  "description": "验收用：纯宿主侧测试模组",
+  "type": "module",
+  "main": "./index.js",
+  "jx": {
+    "description": "演示模组（纯宿主侧）：挂载时向服务端控制台打印一行日志，并演示替换原生行 session-title-llm",
+    "replaces": ["session-title-llm"]
+  }
+}

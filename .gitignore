@@ -44,3 +44,16 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+
+# ===== 坚祥定制层（本分支追加）=====
+# 运行时数据：会话/凭据/索引/压缩试验目录，绝不入库
+dsh-home/
+dsh-home-bili/
+# 模组机器生成物与运行时状态
+插件/.jx-mods.patch.yml
+插件/.垃圾站/
+# 模组内的构建期依赖链接
+插件/*/node_modules/
+# 模组构建产物入库（覆盖上面的 lib/ 忽略，克隆后免构建即用）
+!插件/*/lib/
+!插件/*/lib/**

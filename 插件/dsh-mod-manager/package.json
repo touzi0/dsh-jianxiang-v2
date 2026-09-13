@@ -1,0 +1,30 @@
+{
+  "name": "dsh-mod-manager",
+  "version": "0.1.0",
+  "description": "坚祥模组管理器：集中加载 插件\\ 目录下的所有非官方插件，设置页提供开关（重启生效）",
+  "type": "module",
+  "private": true,
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "dsh-user-message-float",
+  "version": "1.0.0",
+  "description": "用户消息浮窗：查看工具调用/思考过程时，把你最初的问题钉在会话区角落",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "用户消息浮窗：视口停在回合中段（工具调用/思考）时显示当前问题，看到提问本身或最终回答时自动隐藏，可折叠/展开"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

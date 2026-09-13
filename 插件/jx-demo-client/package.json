@@ -1,0 +1,23 @@
+{
+  "name": "jx-demo-client",
+  "version": "1.0.0",
+  "description": "验收用：带浏览器半边的测试模组",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "演示模组（含界面）：在设置页 Plugins 区添加一个「演示插件」标签页，证明浏览器半边自动发现生效"
+  }
+}

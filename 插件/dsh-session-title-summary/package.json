@@ -1,0 +1,40 @@
+{
+  "name": "dsh-session-title-summary",
+  "version": "1.0.0",
+  "description": "分段总结式会话标题：顿号短语列表，锚定初始话题，按新消息节奏滚动更新",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "jx": {
+    "description": "自动标题：分段总结式（顿号短语列表，首短语锚定初始话题），每 5 条新消息滚动更新一次；替换原生 session-title-llm",
+    "replaces": ["session-title-llm"],
+    "config": {
+      "interval": 5,
+      "recentCount": 8,
+      "messageByteCap": 240,
+      "maxPhrases": 4,
+      "minPhrases": 3,
+      "maxTitleBytes": 80,
+      "maxOutputTokens": 160,
+      "timeoutMs": 60000,
+      "temperature": 0.3,
+      "rawQuoteChars": 8
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/schemastery": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-timeout": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-session-title": "*",
+    "@deepseek-ai/dsh-session-title-llm": "*",
+    "@deepseek-ai/dsh-util-values": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "dsh-mode-switch",
+  "version": "1.0.0",
+  "description": "中途切换工作模式：输入框旁的模式药丸，会话开谈后仍可强切预设（官方原生 select 会拒绝）",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "中途切预设：输入框左侧的模式药丸与菜单；对已开谈的会话走宿主强切（回合运行中会拒绝并提示等待）"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

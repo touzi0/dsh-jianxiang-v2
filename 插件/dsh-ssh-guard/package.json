@@ -1,0 +1,40 @@
+{
+  "name": "dsh-ssh-guard",
+  "version": "1.0.0",
+  "description": "SSH 远端命令安全闸：rm 静默改写入回收站（结果标注告知模型）、灾难级命令转人工审批（人话说明）、可选 AI 安全审查（记录可在设置页查看）",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "SSH 安全闸：远端 rm 改写为回收站（模型可见标注）；仅灾难级命令（格式化/覆写磁盘/整盘删除/关机）才问人且用人话说明；可选 AI 审查（默认关）；设置→插件→安全审查 可查全部记录",
+    "config": {
+      "trashDir": "~/.jx-trash",
+      "retentionDays": 7,
+      "review": false,
+      "reviewProvider": "deepseek-official",
+      "reviewModel": "deepseek-chat"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-util-values": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

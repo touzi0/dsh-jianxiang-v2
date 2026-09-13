@@ -1,0 +1,31 @@
+{
+  "name": "dsh-plan-aside",
+  "version": "1.0.0",
+  "description": "计划右侧查阅：官方审阅弹窗不动，右侧栏同步看全文 + 历史回看 + 计划落盘为 markdown 文件",
+  "type": "module",
+  "private": true,
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "计划查阅：官方审阅弹窗保持原样；计划出现时右侧栏「计划」标签同步显示全文，历史计划随时点开回看；每个计划落盘为 dsh-home\\plans\\ 下的 markdown 文件（批准状态自动更新），可直接让模型按文件执行。"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

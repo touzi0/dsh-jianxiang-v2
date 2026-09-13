@@ -1,0 +1,29 @@
+{
+  "name": "dsh-fulltext-search",
+  "version": "2.0.0",
+  "description": "聊天记录逐字搜索：官方搜索框下方追加内容搜索结果（渐进出现，只搜真人消息与每轮最终回答）",
+  "type": "module",
+  "private": true,
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "聊天记录逐字搜索：不动官方搜索框，上半区标题匹配保持原样，下方追加「聊天记录」结果区（子串匹配、按会话命中即止、渐进出现）。只索引真人发送的消息与每轮模型的最终回答，跳过思考/工具调用/中间返回。"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
