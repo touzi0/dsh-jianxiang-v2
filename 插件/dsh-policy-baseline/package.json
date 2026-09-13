@@ -1,0 +1,21 @@
+{
+  "name": "dsh-policy-baseline",
+  "version": "1.0.0",
+  "description": "Runtime policy baseline",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "jx": {
+    "description": "运行策略基线（Runtime policy baseline）：随系统提示注入的操作方策略条款",
+    "defaultEnabled": true
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
