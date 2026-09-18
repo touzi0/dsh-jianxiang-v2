@@ -9,7 +9,7 @@
  *      份逻辑（listMods/renderPatch 的单一事实源，含 jx.config 与 replaces 去重）
  *   4. 确保 dsh-home\cordis.patch.yml 里存在 dsh-mod-manager 的自举插入行
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -49,11 +49,17 @@ for (const name of readdirSync(MODS_ROOT)) {
   }
   for (const dep of hostPeers) {
     const linkPath = join(modModules, dep)
-    // 用 lstat 判断链接本体是否存在：existsSync 对悬空 junction 返回 false，
-    // 会导致愈合池暂时缺失时重复创建而报 EEXIST。
+    // lstat 判断链接本体是否存在（悬空 junction 的 lstat 也成功）；existsSync
+    // 跟随链接判断目标是否可达——安装目录改名/移动后目标悬空，删除重建指向
+    // 新路径下的愈合池。愈合池暂未生成时的悬空（lstat 无）按原样创建。
     let linkExists = true
     try { lstatSync(linkPath) } catch { linkExists = false }
-    if (linkExists) continue
+    if (linkExists) {
+      if (existsSync(linkPath)) continue
+      try { rmSync(linkPath, { recursive: true, force: true }) } catch { /* 被占用时下次启动再修 */ }
+      linked++
+      continue
+    }
     // 悬空 junction 是合法的：启动序列里愈合池先于插件挂载生成，挂载时链接已可用。
     symlinkSync(join(HEALED_POOL, dep), linkPath, 'junction')
     linked++

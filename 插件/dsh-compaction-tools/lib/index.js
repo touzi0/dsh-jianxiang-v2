@@ -53,7 +53,7 @@ function computeCompressibleRange(session, measurement, config) {
 	const nodes = measurement.nodes;
 	if (nodes.length < 3) return null;
 	const eventBySeq = /* @__PURE__ */ new Map();
-	for (const event of session.events) eventBySeq.set(event.seq, event);
+	for (const event of session.snapshotEvents()) eventBySeq.set(event.seq, event);
 	const isSummaryNode = (seq) => {
 		const event = eventBySeq.get(seq);
 		return event?.type === "user/message" && event.data?.source?.plugin === "compact";
@@ -127,13 +127,13 @@ function renderStatus(session, measurement, suggestion, config) {
 	const lines = [];
 	lines.push(`当前上下文压力：约 ${measurement.totalTokens} tokens（表面 ${measurement.surfaceTokens}，共 ${measurement.nodes.length} 个表面节点）。`);
 	const onSurface = new Set(session.surface.nodes);
-	const blocks = session.events.filter((event) => event.type === "compaction/summary");
+	const blocks = session.snapshotEvents().filter((event) => event.type === "compaction/summary");
 	if (blocks.length > 0) lines.push(`历史压缩：${blocks.length} 次，共折叠 ${blocks.reduce((total, event) => total + (event.data.shadowedSeqs?.length ?? 0), 0)} 条消息。`);
 	if (suggestion !== null) {
 		lines.push(`建议压缩范围：seq ${suggestion.startSeq} ~ ${suggestion.endSeq}（约 ${suggestion.tokens} tokens，保留最近 ${Math.round(config.retainRatio * 100)}%${suggestion.cascade ? "；注意：本次需级联重折旧摘要，前缀缓存会重置" : "；增量折叠，已有摘要不动，缓存前缀保持稳定"}）。`);
 		lines.push(`推荐用法：调用 context_compress 传 ranges=[{ startSeq: ${suggestion.startSeq}, endSeq: ${suggestion.endSeq}, topic: "...", summary: "你自己写的自包含摘要（保留文件路径、命令、报错原文、标识符、数值、用户修正意见）" }]——自己写摘要效果最好；省略 ranges 则由引擎自动摘要。`);
 	} else lines.push("当前没有值得压缩的范围（历史太短或不足最小阈值）。");
-	lines.push(`被折叠的原文仍在日志里：可用 search_history 检索、context_restore 取回。当前表面外的 seq：${session.events.filter((event) => onSurface.has(event.seq) === false && (event.type === "user/message" || event.type === "assistant/message")).length} 条。`);
+	lines.push(`被折叠的原文仍在日志里：可用 search_history 检索、context_restore 取回。当前表面外的 seq：${session.snapshotEvents().filter((event) => onSurface.has(event.seq) === false && (event.type === "user/message" || event.type === "assistant/message")).length} 条。`);
 	return lines.join("\n");
 }
 function apply(ctx, config = {}) {
@@ -238,10 +238,10 @@ function apply(ctx, config = {}) {
 			if (args.ranges !== void 0 && args.ranges.length > 0) {
 				const ranges = args.ranges;
 				if (ranges.length > 8) return { text: "一次最多压缩 8 个范围。" };
-				const closed = new Set(session.events.filter((event) => event.type === "compaction/end").map((event) => event.data.compactionId));
-				if (session.events.some((event) => event.type === "compaction/start" && event.data.compactionId !== void 0 && !closed.has(event.data.compactionId))) return { text: "已有压缩事务在进行中，稍后再试。" };
+				const closed = new Set(session.snapshotEvents().filter((event) => event.type === "compaction/end").map((event) => event.data.compactionId));
+				if (session.snapshotEvents().some((event) => event.type === "compaction/start" && event.data.compactionId !== void 0 && !closed.has(event.data.compactionId))) return { text: "已有压缩事务在进行中，稍后再试。" };
 				const measurement = tokenMeter.measure(session);
-				const currentTurn = session.events.filter((event) => event.type === "turn/start").at(-1)?.data.turn ?? null;
+				const currentTurn = session.snapshotEvents().filter((event) => event.type === "turn/start").at(-1)?.data.turn ?? null;
 				const surfaceSeqs = [...session.surface.nodes];
 				const used = /* @__PURE__ */ new Set();
 				const results = [];
@@ -365,7 +365,7 @@ function apply(ctx, config = {}) {
 			const limit = args.maxResults ?? policy.searchMaxResults;
 			const onSurface = new Set(agent.session.surface.nodes);
 			const matches = [];
-			for (const event of agent.session.events) {
+			for (const event of agent.session.snapshotEvents()) {
 				let text = "";
 				let role = "";
 				if (event.type === "user/message" || event.type === "assistant/message" || event.type === "tool/result") {
@@ -415,7 +415,7 @@ function apply(ctx, config = {}) {
 			}]
 		},
 		async execute(args, exec) {
-			const events = agentOf(exec).session.events.filter((event) => event.seq >= args.startSeq && event.seq <= args.endSeq && (event.type === "user/message" || event.type === "assistant/message" || event.type === "tool/result"));
+			const events = agentOf(exec).session.snapshotEvents().filter((event) => event.seq >= args.startSeq && event.seq <= args.endSeq && (event.type === "user/message" || event.type === "assistant/message" || event.type === "tool/result"));
 			if (events.length === 0) return { text: `seq ${args.startSeq} ~ ${args.endSeq} 范围内没有可读消息。` };
 			const body = events.map((event) => {
 				const text = blockText(event.data.content ?? event.data.blocks);

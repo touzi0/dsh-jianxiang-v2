@@ -65,7 +65,10 @@ interface CompactionResultLike {
   summary: readonly ContentBlock[]
 }
 interface SessionLike {
-  readonly events: readonly SessionEventLike[]
+  /** 当前日志长度（下一个 seq）。 */
+  readonly seq: number
+  /** 事件快照（官方 API：snapshotEvents；[].slice 语义，右开区间）。 */
+  snapshotEvents(fromSeq?: number, toExclusive?: number): readonly SessionEventLike[]
   readonly surface: { readonly nodes: readonly number[] }
   append(type: string, data: unknown, ...opts: unknown[]): { seq: number }
 }
@@ -135,7 +138,7 @@ export function computeCompressibleRange(
   if (nodes.length < 3) return null
   // 摘要检查点节点 = user/message 且 source.plugin === 'compact'（官方 checkpoint marker）。
   const eventBySeq = new Map<number, SessionEventLike>()
-  for (const event of session.events) eventBySeq.set(event.seq, event)
+  for (const event of session.snapshotEvents()) eventBySeq.set(event.seq, event)
   const isSummaryNode = (seq: number): boolean => {
     const event = eventBySeq.get(seq)
     return event?.type === 'user/message'
@@ -205,7 +208,7 @@ function renderStatus(
   const lines: string[] = []
   lines.push(`当前上下文压力：约 ${measurement.totalTokens} tokens（表面 ${measurement.surfaceTokens}，共 ${measurement.nodes.length} 个表面节点）。`)
   const onSurface = new Set(session.surface.nodes)
-  const blocks = session.events.filter(event => event.type === 'compaction/summary')
+  const blocks = session.snapshotEvents().filter(event => event.type === 'compaction/summary')
   if (blocks.length > 0) {
     lines.push(`历史压缩：${blocks.length} 次，共折叠 ${blocks.reduce((total, event) => total + (event.data.shadowedSeqs?.length ?? 0), 0)} 条消息。`)
   }
@@ -215,7 +218,7 @@ function renderStatus(
   } else {
     lines.push('当前没有值得压缩的范围（历史太短或不足最小阈值）。')
   }
-  lines.push(`被折叠的原文仍在日志里：可用 search_history 检索、context_restore 取回。当前表面外的 seq：${session.events.filter(event => onSurface.has(event.seq) === false && (event.type === 'user/message' || event.type === 'assistant/message')).length} 条。`)
+  lines.push(`被折叠的原文仍在日志里：可用 search_history 检索、context_restore 取回。当前表面外的 seq：${session.snapshotEvents().filter(event => onSurface.has(event.seq) === false && (event.type === 'user/message' || event.type === 'assistant/message')).length} 条。`)
   return lines.join('\n')
 }
 
@@ -301,12 +304,12 @@ export function apply(ctx: Context, config: Config = {}): void {
         const ranges = args.ranges
         if (ranges.length > 8) return { text: '一次最多压缩 8 个范围。' }
         // 压缩锁：日志里存在未闭合的 compaction/start 时拒绝。
-        const closed = new Set(session.events.filter(event => event.type === 'compaction/end').map(event => event.data.compactionId))
-        const open = session.events.some(event => event.type === 'compaction/start' && event.data.compactionId !== undefined && !closed.has(event.data.compactionId))
+        const closed = new Set(session.snapshotEvents().filter(event => event.type === 'compaction/end').map(event => event.data.compactionId))
+        const open = session.snapshotEvents().some(event => event.type === 'compaction/start' && event.data.compactionId !== undefined && !closed.has(event.data.compactionId))
         if (open) return { text: '已有压缩事务在进行中，稍后再试。' }
 
         const measurement = tokenMeter.measure(session)
-        const currentTurn = session.events.filter(event => event.type === 'turn/start').at(-1)?.data.turn ?? null
+        const currentTurn = session.snapshotEvents().filter(event => event.type === 'turn/start').at(-1)?.data.turn ?? null
         const surfaceSeqs = [...session.surface.nodes]
         const used = new Set<number>()
         const results: string[] = []
@@ -418,7 +421,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const limit = args.maxResults ?? policy.searchMaxResults
       const onSurface = new Set(agent.session.surface.nodes)
       const matches: string[] = []
-      for (const event of agent.session.events) {
+      for (const event of agent.session.snapshotEvents()) {
         let text = ''
         let role = ''
         if (event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result') {
@@ -458,7 +461,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     async execute(args: { startSeq: number, endSeq: number }, exec: ToolExec) {
       const agent = agentOf(exec)
-      const events = agent.session.events.filter(event =>
+      const events = agent.session.snapshotEvents().filter(event =>
         event.seq >= args.startSeq && event.seq <= args.endSeq
         && (event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/result'))
       if (events.length === 0) {
