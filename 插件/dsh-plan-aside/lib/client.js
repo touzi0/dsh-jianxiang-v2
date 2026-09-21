@@ -3977,13 +3977,13 @@ const TYPERT_REMOTE = {
 			codec: {
 				mode: "strict",
 				typeSymbol: "dsh-plan-aside#jxPlans/list:sessionId",
-				schema: string()
+				create: () => string()
 			}
 		}],
 		result: {
 			mode: "strict",
 			typeSymbol: "dsh-plan-aside#jxPlans/list:result",
-			schema: object({ plans: array(planRecordSchema) })
+			create: () => object({ plans: array(planRecordSchema) })
 		},
 		sourceLocation: {
 			file: "src/index.ts",

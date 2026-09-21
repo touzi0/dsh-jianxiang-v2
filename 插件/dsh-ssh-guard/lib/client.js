@@ -4216,13 +4216,13 @@ const TYPERT_REMOTE = {
 			codec: {
 				mode: "strict",
 				typeSymbol: "dsh-ssh-guard#jxSshGuard/list:limit",
-				schema: number()
+				create: () => number()
 			}
 		}],
 		result: {
 			mode: "strict",
 			typeSymbol: "dsh-ssh-guard#jxSshGuard/list:result",
-			schema: listResultSchema
+			create: () => listResultSchema
 		},
 		sourceLocation: {
 			file: "src/index.ts",
@@ -4239,7 +4239,7 @@ const TYPERT_REMOTE = {
 		result: {
 			mode: "strict",
 			typeSymbol: "dsh-ssh-guard#jxSshGuard/clear:result",
-			schema: object({ cleared: literal(true) })
+			create: () => object({ cleared: literal(true) })
 		},
 		sourceLocation: {
 			file: "src/index.ts",

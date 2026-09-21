@@ -1,4 +1,4 @@
-# 坚祥集中插件机制（基于官方 DSH 0.1.5-alpha.2）
+# 坚祥集中插件机制（当前基线：官方 DSH 0.1.6-alpha.2）
 
 所有非官方插件（社区 + 自研）统一放在本文件夹（`插件\`），**一个模组一个子文件夹**。
 数据不进 C 盘、不散落在官方各目录；官方仓库源码零改动（`git pull` 永不冲突）。
@@ -70,4 +70,6 @@
 - 换原生插件 = disable 原行 + insert 替代行（官方 patch 不能改写行的模块名，这是官方语义）。
 - zip 安装、免重启热挂载暂未做（后续可在脚本/管理器里加解压能力）。
 - 模组里的宿主代码必须是构建产物（.js / ESM），不能是 .ts 源码。
+- **手写客户端 Remote 贡献（`TYPERT_REMOTE`）在官方 0.1.6+ 必须用 `create: () => <zod>`**：旧的 `schema: <zod>` 会被 `typert.validateCodec` 拒绝（"strict codec has no create() factory"），挂载失败会让整页进「Failed to load plugins」。宿主半边用原型 SRC 标记，不受此改动影响。
+- 模组 `build.mjs` 的 zod 链接用「lstat 判本体 + 悬空则删重建」双检：安装目录改名或 zod 升版后链接悬空时能自愈（否则 symlinkSync 报 EEXIST，构建直接失败）。
 - **重装依赖（pnpm install）或大版本升级后的首次冷启动**：client-modules 会把当时解析失败的浏览器半边永久缓存到重启为止（宿主半边不受影响）。表现为新模组设置页正常、但界面没出现——**再启动一次即恢复**。

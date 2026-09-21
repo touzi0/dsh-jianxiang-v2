@@ -4075,7 +4075,7 @@ const strParam = (name, symbol) => ({
 	codec: {
 		mode: "strict",
 		typeSymbol: symbol,
-		schema: string()
+		create: () => string()
 	}
 });
 const TYPERT_REMOTE = {
@@ -4091,7 +4091,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/asrStatus:result",
-				schema: asrStatusSchema
+				create: () => asrStatusSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -4109,7 +4109,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/transcribe:result",
-				schema: transcribeResultSchema
+				create: () => transcribeResultSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -4130,13 +4130,13 @@ const TYPERT_REMOTE = {
 				codec: {
 					mode: "strict",
 					typeSymbol: "dsh-speech#jxSpeech/setVoiceActive:active",
-					schema: boolean()
+					create: () => boolean()
 				}
 			}],
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/setVoiceActive:result",
-				schema: voiceActiveResultSchema
+				create: () => voiceActiveResultSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -4154,7 +4154,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/polish:result",
-				schema: transcribeResultSchema
+				create: () => transcribeResultSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -4172,7 +4172,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/localStatus:result",
-				schema: localStatusSchema
+				create: () => localStatusSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -4190,7 +4190,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/localSetup:result",
-				schema: localSetupResultSchema
+				create: () => localSetupResultSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -4208,7 +4208,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-speech#jxSpeech/transcribePcm:result",
-				schema: pcmTranscribeResultSchema
+				create: () => pcmTranscribeResultSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",

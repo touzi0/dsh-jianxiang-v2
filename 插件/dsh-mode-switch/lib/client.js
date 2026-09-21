@@ -2987,7 +2987,7 @@ const TYPERT_REMOTE = {
 			codec: {
 				mode: "strict",
 				typeSymbol: "dsh-mode-switch#jxPreset/switch:sessionId",
-				schema: string()
+				create: () => string()
 			}
 		}, {
 			name: "agentPreset",
@@ -2996,13 +2996,13 @@ const TYPERT_REMOTE = {
 			codec: {
 				mode: "strict",
 				typeSymbol: "dsh-mode-switch#jxPreset/switch:agentPreset",
-				schema: string()
+				create: () => string()
 			}
 		}],
 		result: {
 			mode: "strict",
 			typeSymbol: "dsh-mode-switch#jxPreset/switch:result",
-			schema: string()
+			create: () => string()
 		},
 		sourceLocation: {
 			file: "src/index.ts",

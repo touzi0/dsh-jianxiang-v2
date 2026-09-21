@@ -44,7 +44,7 @@ const strParam = (name: string, symbol: string) => ({
   name,
   wire: name,
   source: 'json',
-  codec: { mode: 'strict' as const, typeSymbol: symbol, schema: z.string() },
+  codec: { mode: 'strict' as const, typeSymbol: symbol, create: () => z.string() },
 })
 
 export const TYPERT_REMOTE = {
@@ -57,7 +57,7 @@ export const TYPERT_REMOTE = {
       method: 'asrStatus',
       invocation: { kind: 'direct' },
       parameters: [],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/asrStatus:result', schema: asrStatusSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/asrStatus:result', create: () => asrStatusSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
     {
@@ -70,7 +70,7 @@ export const TYPERT_REMOTE = {
         strParam('audioBase64', 'dsh-speech#jxSpeech/transcribe:audioBase64'),
         strParam('mimeType', 'dsh-speech#jxSpeech/transcribe:mimeType'),
       ],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/transcribe:result', schema: transcribeResultSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/transcribe:result', create: () => transcribeResultSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
     {
@@ -84,10 +84,10 @@ export const TYPERT_REMOTE = {
           name: 'active',
           wire: 'active',
           source: 'json',
-          codec: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/setVoiceActive:active', schema: z.boolean() },
+          codec: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/setVoiceActive:active', create: () => z.boolean() },
         },
       ],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/setVoiceActive:result', schema: voiceActiveResultSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/setVoiceActive:result', create: () => voiceActiveResultSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
     {
@@ -100,7 +100,7 @@ export const TYPERT_REMOTE = {
         strParam('text', 'dsh-speech#jxSpeech/polish:text'),
         strParam('context', 'dsh-speech#jxSpeech/polish:context'),
       ],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/polish:result', schema: transcribeResultSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/polish:result', create: () => transcribeResultSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
     {
@@ -110,7 +110,7 @@ export const TYPERT_REMOTE = {
       method: 'localStatus',
       invocation: { kind: 'direct' },
       parameters: [],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/localStatus:result', schema: localStatusSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/localStatus:result', create: () => localStatusSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
     {
@@ -120,7 +120,7 @@ export const TYPERT_REMOTE = {
       method: 'localSetup',
       invocation: { kind: 'direct' },
       parameters: [],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/localSetup:result', schema: localSetupResultSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/localSetup:result', create: () => localSetupResultSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
     {
@@ -130,7 +130,7 @@ export const TYPERT_REMOTE = {
       method: 'transcribePcm',
       invocation: { kind: 'direct' },
       parameters: [strParam('pcmBase64', 'dsh-speech#jxSpeech/transcribePcm:pcmBase64')],
-      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/transcribePcm:result', schema: pcmTranscribeResultSchema },
+      result: { mode: 'strict', typeSymbol: 'dsh-speech#jxSpeech/transcribePcm:result', create: () => pcmTranscribeResultSchema },
       sourceLocation: { file: 'src/index.ts', line: 1, column: 3 },
     },
   ],

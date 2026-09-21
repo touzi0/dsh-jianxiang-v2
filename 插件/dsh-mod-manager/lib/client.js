@@ -3752,7 +3752,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-mod-manager#jxMods/list:result",
-				schema: snapshotSchema
+				create: () => snapshotSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -3773,7 +3773,7 @@ const TYPERT_REMOTE = {
 				codec: {
 					mode: "strict",
 					typeSymbol: "dsh-mod-manager#jxMods/setEnabled:id",
-					schema: string()
+					create: () => string()
 				}
 			}, {
 				name: "enabled",
@@ -3782,13 +3782,13 @@ const TYPERT_REMOTE = {
 				codec: {
 					mode: "strict",
 					typeSymbol: "dsh-mod-manager#jxMods/setEnabled:enabled",
-					schema: boolean()
+					create: () => boolean()
 				}
 			}],
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-mod-manager#jxMods/setEnabled:result",
-				schema: setEnabledResultSchema
+				create: () => setEnabledResultSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",
@@ -3806,7 +3806,7 @@ const TYPERT_REMOTE = {
 			result: {
 				mode: "strict",
 				typeSymbol: "dsh-mod-manager#jxMods/rescan:result",
-				schema: snapshotSchema
+				create: () => snapshotSchema
 			},
 			sourceLocation: {
 				file: "src/index.ts",

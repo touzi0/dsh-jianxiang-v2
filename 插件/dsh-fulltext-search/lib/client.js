@@ -3973,7 +3973,7 @@ const TYPERT_REMOTE = {
 			codec: {
 				mode: "strict",
 				typeSymbol: "dsh-fulltext-search#jxSearch/search:query",
-				schema: string()
+				create: () => string()
 			}
 		}, {
 			name: "cursor",
@@ -3982,13 +3982,13 @@ const TYPERT_REMOTE = {
 			codec: {
 				mode: "strict",
 				typeSymbol: "dsh-fulltext-search#jxSearch/search:cursor",
-				schema: string()
+				create: () => string()
 			}
 		}],
 		result: {
 			mode: "strict",
 			typeSymbol: "dsh-fulltext-search#jxSearch/search:result",
-			schema: pageSchema
+			create: () => pageSchema
 		},
 		sourceLocation: {
 			file: "src/index.ts",

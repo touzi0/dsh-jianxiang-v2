@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 
 const PKG_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(PKG_DIR, '../..')
@@ -23,7 +23,12 @@ const zodDir = readdirSync(pnpmStore).find(name => /^zod@\d/.test(name))
 if (zodDir !== undefined) {
   const localModules = join(PKG_DIR, 'node_modules')
   const linkPath = join(localModules, 'zod')
-  if (!existsSync(linkPath)) {
+  // lstat 判断链接本体：安装目录改名或 zod 升级后链接会悬空（existsSync 为 false），
+  // 此时直接 symlinkSync 会报 EEXIST——删掉悬空链接再建即可自愈。
+  let linkExists = true
+  try { lstatSync(linkPath) } catch { linkExists = false }
+  if (!linkExists || !existsSync(linkPath)) {
+    if (linkExists) rmSync(linkPath, { recursive: true, force: true })
     mkdirSync(localModules, { recursive: true })
     symlinkSync(join(pnpmStore, zodDir, 'node_modules', 'zod'), linkPath, 'junction')
   }
@@ -41,6 +46,16 @@ for (const config of ['tsdown.host.ts', 'tsdown.client.ts']) {
     console.error(`[build] ${config} 构建失败。`)
     process.exit(result.status ?? 1)
   }
+}
+
+// 去行尾空白：产物入库，上游 lefthook 的 whitespace 钩子（git diff --check）会拦
+// 内联依赖带来的行尾空格；只影响行尾，行号不变，源码映射仍有效。
+for (const file of ['lib/index.js', 'lib/client.js']) {
+  const path = join(PKG_DIR, file)
+  if (!existsSync(path)) continue
+  const text = readFileSync(path, 'utf8')
+  const trimmed = text.replace(/[ \t]+$/gmu, '')
+  if (trimmed !== text) writeFileSync(path, trimmed)
 }
 
 console.log('[build] dsh-mod-manager 构建完成：lib/index.js + lib/client.js')
