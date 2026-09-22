@@ -1,7 +1,7 @@
 {
   "name": "dsh-env-context",
-  "version": "1.1.0",
-  "description": "运行环境上下文注入：让模型知道平台/系统/时间/工作目录，避免因不知环境而犯错",
+  "version": "1.2.0",
+  "description": "运行环境上下文注入：让模型知道平台/系统/PowerShell 版本/时间/工作目录与语言偏好，避免因不知环境而犯错",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -9,7 +9,7 @@
     "./package.json": "./package.json"
   },
   "jx": {
-    "description": "运行环境规则：向系统提示注入平台/架构/Node/Shell/工作目录/当前时间与编码规则（含写文件一律 UTF-8）",
+    "description": "运行环境规则：向系统提示注入平台/架构/Node/Shell（含实测 PowerShell 版本号）/工作目录/当前时间、编码规则（含写文件一律 UTF-8）与中文输出/思考偏好",
     "defaultEnabled": true
   },
   "peerDependencies": {

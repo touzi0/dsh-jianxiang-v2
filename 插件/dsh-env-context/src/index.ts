@@ -1,13 +1,17 @@
 /**
  * 运行环境上下文注入（坚祥定制，原 packages/context/env-context 迁移为模组）。
  *
- * 目的：让模型明确知道「现在运行在哪里」——平台/架构/Node 版本/Shell/工作目录/
+ * 目的：让模型明确知道「现在运行在哪里」——平台/架构/Node 版本/Shell（含实测
+ * PowerShell 版本号，区分 pwsh 7.x 与 Windows PowerShell 5.1）/工作目录/
  * 当前时间（带时区），避免因不知道时间和系统而犯错（例如以为在 Linux 上跑
- * bash、用过期时间推算、在 Windows 上不处理 GBK/UTF-8 编码差异）。
+ * bash、用过期时间推算、在 Windows 上不处理 GBK/UTF-8 编码差异、把
+ * PowerShell 5.1 当成 7.x 用了不存在的新语法）。同时声明语言偏好：回复与
+ * 思考尽量用中文，代码/命令/标识符保持原样。
  * 以 systemPrompt.context 全局贡献注册，任何 agent 预设与沙箱模式都看到同一份快照。
  */
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { spawnSync } from 'node:child_process'
 import { createTimestampFormatter, formatTimestamp } from './timestamp.ts'
 
 export const name = 'dsh-env-context'
@@ -31,6 +35,11 @@ const POSIX_NOTES: readonly string[] = [
   'Quote file paths containing spaces; keep file paths, identifiers, and shell commands untranslated.',
 ]
 
+/** 语言偏好规则：中文回复/中文思考，代码与命令保持原样。 */
+const LANGUAGE_NOTES: readonly string[] = [
+  'Language preference: respond to the user in Chinese (Simplified). Prefer reasoning/thinking in Chinese as well; keep code, shell commands, identifiers, file paths, and quoted log excerpts untranslated.',
+]
+
 export interface Config {
   timeZone?: string
   includeSeconds?: boolean
@@ -43,13 +52,74 @@ export const Config: z<Config> = z.object({
   notes: z.array(z.string()),
 })
 
-function detectShell(platform: string): string {
+interface PowerShellProbe {
+  exe: string
+  version: string
+}
+
+/** 探测单个 PowerShell 可执行文件的版本（$PSVersionTable.PSVersion），失败返回 undefined。 */
+function probePowerShell(exe: string): PowerShellProbe | undefined {
+  try {
+    const result = spawnSync(exe, ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.ToString()'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      windowsHide: true,
+    })
+    if (result.error || result.status !== 0) return undefined
+    const version = result.stdout.trim()
+    return version === '' ? undefined : { exe, version }
+  } catch {
+    return undefined
+  }
+}
+
+/** 枚举 PATH 上某可执行文件名的全部副本（where.exe）；where 不可用时退回按名探测第一个。 */
+function whereExe(exe: string): string[] {
+  try {
+    const result = spawnSync('where.exe', [exe], { encoding: 'utf8', timeout: 5000, windowsHide: true })
+    if (result.error || result.status !== 0) return [exe]
+    const paths = result.stdout.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '')
+    return paths.length > 0 ? paths : [exe]
+  } catch {
+    return [exe]
+  }
+}
+
+/**
+ * 探测本机全部 PowerShell 及其实测版本号：枚举 PATH 上每个 pwsh.exe /
+ * powershell.exe 副本，逐个问 $PSVersionTable——版本号完全以实测为准，
+ * 6.x / 7.x / 5.1 或多版本并装都能如实列出（同版本多副本只记一条）。
+ * 仅 win32 调用。
+ */
+function detectPowerShells(): PowerShellProbe[] {
+  const seen = new Set<string>()
+  const probes: PowerShellProbe[] = []
+  for (const exe of ['pwsh.exe', 'powershell.exe']) {
+    for (const path of whereExe(exe)) {
+      const probe = probePowerShell(path)
+      if (probe === undefined) continue
+      const key = `${probe.version}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      probes.push({ exe: path, version: probe.version })
+    }
+  }
+  return probes
+}
+
+function detectShell(platform: string, powerShells: readonly PowerShellProbe[]): string {
   if (platform === 'win32') {
+    const psLabel = powerShells.length > 0
+      ? powerShells.map(ps => {
+          const base = ps.exe.split(/[\\/]/).pop() ?? ps.exe
+          return `PowerShell ${ps.version} (${base})`
+        }).join(' / ')
+      : 'PowerShell (version unknown)'
     const hasCmd = process.env['ComSpec'] !== undefined
       && /cmd(?:\.exe)?$/i.test(process.env['ComSpec'] ?? '')
     const hasPowerShell = process.env['PSModulePath'] !== undefined
-    if (hasCmd && hasPowerShell) return 'cmd.exe / PowerShell (pwsh)'
-    if (hasPowerShell) return 'PowerShell (pwsh)'
+    if (hasCmd && hasPowerShell) return `cmd.exe / ${psLabel}`
+    if (hasPowerShell) return psLabel
     return 'cmd.exe'
   }
   return process.env['SHELL'] ?? 'bash'
@@ -96,8 +166,12 @@ export function apply(ctx: Context, config: Config = {}): void {
   const includeSeconds = config.includeSeconds ?? false
   const notes = [
     ...(process.platform === 'win32' ? WIN32_NOTES : POSIX_NOTES),
+    ...LANGUAGE_NOTES,
     ...(config.notes ?? []),
   ]
+  // 探测一次即可：PowerShell 版本在进程存活期内不会变，避免每次渲染都 spawn 子进程。
+  const powerShells = process.platform === 'win32' ? detectPowerShells() : []
+  const shell = detectShell(process.platform, powerShells)
 
   ctx.systemPrompt.context({
     name: 'runtime:environment',
@@ -109,7 +183,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         process.platform,
         process.arch,
         process.version,
-        detectShell(process.platform),
+        shell,
         cwd,
         text,
         notes,

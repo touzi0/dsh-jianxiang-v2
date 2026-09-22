@@ -1,0 +1,38 @@
+{
+  "name": "dsh-ssh-review",
+  "version": "1.0.0",
+  "description": "SSH 远端命令自动审查：灾难级命令（格式化/覆写磁盘/整盘删除/关机等）弹窗让用户决定；有删除意味的中间地带命令默认交 AI 快评放行或建议问人；全部动作可在设置页查看",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "远端命令审查（拆分自 dsh-ssh-guard）：灾难级命令弹窗问人（人话说明）；风险中间地带默认开启 AI 快评（可关）；设置→插件→安全审查 可查全部记录。rm 回收站改写已拆到 dsh-ssh-rm-rewrite",
+    "defaultEnabled": true,
+    "config": {
+      "review": true,
+      "reviewProvider": "deepseek-official",
+      "reviewModel": "deepseek-chat"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*",
+    "@deepseek-ai/dsh-llm": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

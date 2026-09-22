@@ -303,3 +303,46 @@ export function findRepositories(base: string, maxDepth: number): string[] {
 export function repositoryName(path: string): string {
   return basename(path) === '' ? path : basename(path)
 }
+
+/** 提交信息字符数上限（单个 -m 参数的安全边界）。 */
+export const MESSAGE_MAX_CHARS = 4000
+/** pathspec 列表条数上限。 */
+export const PATHSPEC_MAX = 500
+
+/**
+ * 净化提交信息：去掉控制字符（换行保留——多行提交信息合法）、压缩多余空行、限长。
+ * @param message - 用户输入或 AI 生成的提交信息原文。
+ * @returns 可安全作为单个 -m 参数的文本；空串表示没有可用内容。
+ */
+export function sanitizeMessage(message: string): string {
+  const cleaned = message
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '')
+    .replace(/\r\n?/gu, '\n')
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim()
+  return cleaned.slice(0, MESSAGE_MAX_CHARS)
+}
+
+/**
+ * 过滤出一组可安全传给 git 的 pathspec（在 `--` 之后作为独立 argv 元素使用）：
+ * 拒绝绝对路径、`..`/`.` 段、pathspec magic 前缀、目录形式、含 NUL 的项，并去重限数。
+ * @param paths - 浏览器送来的路径列表。
+ * @returns 通过校验的路径（保持原顺序）。
+ */
+export function safePathspecs(paths: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const ok: string[] = []
+  for (const path of paths) {
+    if (ok.length >= PATHSPEC_MAX) break
+    if (path === '' || path.includes('\0') || path.length > 4096) continue
+    if (/^[a-zA-Z]:[\\/]/u.test(path) || path.startsWith('/') || path.startsWith('\\')) continue
+    if (path.startsWith(':') || path.startsWith('!') || path.startsWith('^')) continue
+    const segments = path.split(/[\\/]/u)
+    if (segments.includes('..') || segments.includes('.')) continue
+    if (path.endsWith('/')) continue
+    if (seen.has(path)) continue
+    seen.add(path)
+    ok.push(path)
+  }
+  return ok
+}

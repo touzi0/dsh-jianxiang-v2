@@ -217,7 +217,7 @@ describe('AppFrame', () => {
     const { frame, rightOwner, sidebarOwner, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([280, 0])
     expect(sidebarOwner()).toEqual({ collapsed: false, width: 280 })
-    expect(rightOwner()).toEqual({ width: 864, viewportWidth: 1920, canShow: true })
+    expect(rightOwner()).toEqual({ width: 336, viewportWidth: 1920, canShow: true })
     expect(slotCalls.find(c => c.key === 'main')).toEqual({ key: 'main', props: {}, options: { entryKey: 'conversation' } })
   })
 
@@ -279,18 +279,18 @@ describe('AppFrame', () => {
 })
 
 describe('AppFrame normal width concessions', () => {
-  it('measures the frame, not the window, before choosing the ratio fallback', () => {
+  it('derives the width from the conversation axis rule even before any measurement', () => {
     frameWidth = 1000
     const { instance, rightOwner } = mountFrame(1920)
     expect(instance.getSnapshot().layoutInfo.viewportWidth).toBe(1000)
     expect(rightOwner()).toEqual({ width: 450, viewportWidth: 1000, canShow: true })
     act(() => { instance.actions.openRightbar(true, false) })
-    // No centre occupant publishes a content column, so the frame keeps the
-    // ratio fallback and never writes a width preference.
+    // No centre occupant publishes a content column, so the frame mirrors the
+    // conversation's own width rule instead of measuring.
     expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
     resize(1920)
-    // Derived, so it follows the frame rather than a first-open snapshot.
-    expect(rightOwner().width).toBe(864)
+    // (1920 − 280 sidebar − 920 capped content)/2 − 24 = 336: derived, no preference.
+    expect(rightOwner()).toEqual({ width: 336, viewportWidth: 1920, canShow: true })
   })
 
   it('shrinks the right panel to 300px, drops its track, and only then squeezes center', () => {
@@ -369,7 +369,7 @@ describe('AppFrame normal width concessions', () => {
 describe('AppFrame right panel presentation', () => {
   it('releases the fullscreen track with the instant marker while clearing fullscreen', () => {
     const { frame, instance } = mountFrame()
-    act(() => { instance.actions.openRightbar(true, true) })
+    act(() => { instance.actions.setRightbar(864); instance.actions.openRightbar(true, true) })
     expect(tracks(frame)).toEqual([280, 864])
     act(() => { instance.actions.closeRightbar() })
     expect(tracks(frame)).toEqual([280, 0])
@@ -382,7 +382,7 @@ describe('AppFrame right panel presentation', () => {
 
   it('marks restoration instant without suppressing the following normal close', () => {
     const { frame, instance } = mountFrame()
-    act(() => { instance.actions.openRightbar(true, true) })
+    act(() => { instance.actions.setRightbar(864); instance.actions.openRightbar(true, true) })
     act(() => { instance.actions.openRightbar(true, false) })
     expect(tracks(frame)).toEqual([280, 864])
     expect(frame.dataset.rightbarFullscreen).toBeUndefined()
@@ -417,7 +417,7 @@ describe('AppFrame right panel presentation', () => {
 
   it('preserves normal tracks through fullscreen and hides the outer resize handle', () => {
     const { frame, instance, rightOwner } = mountFrame()
-    act(() => { instance.actions.openRightbar(true, false) })
+    act(() => { instance.actions.setRightbar(864); instance.actions.openRightbar(true, false) })
     expect(tracks(frame)).toEqual([280, 864])
     expect(handleFor(frame, 'rightbar').style.left).toBe('1056px')
     act(() => { instance.actions.openRightbar(true, true) })
@@ -439,7 +439,7 @@ describe('AppFrame right panel presentation', () => {
     const { frame, instance } = mountFrame()
     expect(tracks(frame)).toEqual([280, 0])
     expect(frame.dataset.rightbarFullscreen).toBeUndefined()
-    act(() => { instance.actions.openRightbar(true, true) })
+    act(() => { instance.actions.setRightbar(864); instance.actions.openRightbar(true, true) })
     expect(tracks(frame)).toEqual([280, 864])
     expect(frame.dataset.rightbarFullscreen).toBe('true')
     expect(frame.querySelector('[data-side="rightbar"]')).toBeNull()

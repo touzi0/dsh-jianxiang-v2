@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import {
   addedTextDiff, capText, diffIsBinary, findRepositories,
   groupStatus, isRepositoryRoot, LOG_FIELD_SEPARATOR, LOG_RECORD_SEPARATOR, parseLog,
-  parseNameStatus, parseStatusV2, repositoryName,
+  parseNameStatus, parseStatusV2, repositoryName, safePathspecs, sanitizeMessage,
 } from './src/git.ts'
 import { diffLineKind } from './src/diff-lines.ts'
 
@@ -139,6 +139,23 @@ try {
 } finally {
   rmSync(fixture, { recursive: true, force: true })
 }
+
+// --- 提交信息净化 ------------------------------------------------------------
+eq(sanitizeMessage('  fix: 修复登录  \n'), 'fix: 修复登录', '净化：去首尾空白')
+eq(sanitizeMessage('a\x00b\x07c\rd'), 'abc\nd', '净化：去控制字符（CR 规范为 LF）')
+eq(sanitizeMessage('一\n\n\n\n二'), '一\n\n二', '净化：压缩连续空行')
+eq(sanitizeMessage('中文'.repeat(3000)).length, 4000, '净化：限长 4000')
+eq(sanitizeMessage('   '), '', '净化：全空白为空串')
+
+// --- pathspec 校验 ------------------------------------------------------------
+eq(safePathspecs(['src/a.ts', 'src/b c.ts', '中文/路径.txt']),
+  ['src/a.ts', 'src/b c.ts', '中文/路径.txt'], 'pathspec：普通相对路径全过')
+eq(safePathspecs(['C:/win/abs', '/unix/abs', '\\win\\abs']), [], 'pathspec：绝对路径全拒')
+eq(safePathspecs(['../up', 'a/../b', './cur', 'a/./b']), [], 'pathspec：.. 与 . 段全拒')
+eq(safePathspecs([':!magic', '^neg', '!glob']), [], 'pathspec：magic 前缀全拒')
+eq(safePathspecs(['dir/']), [], 'pathspec：目录形式拒绝')
+eq(safePathspecs(['a.ts', 'a.ts', '']), ['a.ts'], 'pathspec：去重、空串剔除')
+eq(safePathspecs(Array.from({ length: 600 }, (_, i) => `f${String(i)}.ts`)).length, 500, 'pathspec：上限 500 条')
 
 // --- 结果 -------------------------------------------------------------------
 if (failures.length > 0) {

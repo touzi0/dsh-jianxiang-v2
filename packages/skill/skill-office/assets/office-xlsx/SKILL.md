@@ -1,6 +1,6 @@
 ---
 name: office-xlsx
-description: Read, create, and modify Excel workbooks (.xlsx), including cell values, formulas, formatting, and pandas analysis. Use when an Excel workbook is an input or deliverable.
+description: Read, create, and modify Excel workbooks (.xlsx), including cell values, formulas, formatting, and pandas analysis. Use when an Excel workbook is an input or deliverable, or when the user asks for 表格、台账、报表、清单、数据表 to be read, created, or modified.
 ---
 
 # Excel workbooks

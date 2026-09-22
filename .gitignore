@@ -53,6 +53,8 @@ native/system/test/bin/
 # dsh-home*/ 同时覆盖历史遗留的「dsh-home 」（带尾随空格）目录名
 dsh-home*/
 dsh-home-bili/
+# 本地临时产物：启动日志、诊断目录、临时验证脚本（含明文启动 token），绝不入库
+.tmp-*
 # 模组机器生成物与运行时状态
 插件/.jx-mods.patch.yml
 插件/.垃圾站/

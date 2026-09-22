@@ -24,7 +24,8 @@ from pptx.util import Inches
 def main():
     """Check installed versions and read back editable Office documents."""
     assert sys.version_info[:3] == tuple(map(int, sys.argv[2].split("."))), sys.version
-    versions = json.loads(sys.argv[1])
+    # argv[1] 是载荷自带的 runtime.json；从文件读版本避免 shell 引号改写 JSON。
+    versions = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["pythonPackages"]
     # Only pip belongs to the interpreter baseline; all other distributions must be declared.
     # Each target's native release-host smoke must confirm this baseline.
     expected_names = {re.sub(r"[-_.]+", "-", name).lower() for name in versions} | {"pip"}
@@ -84,6 +85,28 @@ def main():
         finally:
             reopened_workbook.close()
         assert pandas.read_excel(root / "workbook.xlsx")["Value"].iloc[0] == 42
+
+        # PDF 能力：pypdf 读回页数，pypdfium2 渲染页面位图。
+        # 页面位图是模型"把 PDF 当图片读"的唯一通路，故必须真实渲染一次而非只查版本。
+        from pypdf import PdfReader, PdfWriter
+        import pypdfium2 as pdfium
+
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=120)
+        with open(root / "blank.pdf", "wb") as handle:
+            writer.write(handle)
+        with pdfium.PdfDocument(root / "blank.pdf") as probe:
+            assert len(probe) == 1
+            bitmap = probe[0].render(scale=1)
+            try:
+                rendered = bitmap.to_pil()
+                try:
+                    assert rendered.size == (200, 120), rendered.size
+                finally:
+                    rendered.close()
+            finally:
+                bitmap.close()
+        assert len(PdfReader(root / "blank.pdf").pages) == 1
         for file, arguments in [
             ("document.docx", ["--contains", "Office 文档"]),
             ("presentation.pptx", ["--contains", "Office 演示", "--count", "1"]),

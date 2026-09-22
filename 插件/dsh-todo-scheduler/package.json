@@ -1,0 +1,35 @@
+{
+  "name": "dsh-todo-scheduler",
+  "version": "0.1.0",
+  "description": "待办事项与定时任务：侧边栏「插件」原位置新增入口；不定时/定时/循环定时的工作任务清单，到点在目标工作区新建会话派活并回填会话链接；错过不自动补跑，页面提示补跑或忽略；数据持久化在 dsh-home\\jx-todo\\",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "待办事项与定时任务：侧边栏原「插件」位置的入口，里面是一条条工作任务（不定时 / 定时一次 / 每天 / 每周某几天 / 仅工作日 / 每隔 N 分钟）；到点自动新建会话派活，执行记录里能一键跳到结果会话",
+    "defaultEnabled": true
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "selftest": "node selftest-schedule.mts && node selftest-remote.mts && node selftest-gateway.mts && node selftest-client.mts"
+  }
+}

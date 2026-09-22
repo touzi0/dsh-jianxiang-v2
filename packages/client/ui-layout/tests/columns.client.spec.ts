@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { clampWidth, computeColumns, remainingWidth, RIGHTBAR_CONTENT_GUTTER } from '../src/client/columns.ts'
+import {
+  clampWidth, computeColumns, conversationContentWidth, remainingWidth, RIGHTBAR_CONTENT_GUTTER,
+} from '../src/client/columns.ts'
 
 describe('clampWidth', () => {
   it('clamps into the range and rounds', () => {
@@ -18,6 +20,20 @@ describe('remainingWidth', () => {
   it('floors at zero for a content column at or past the frame edge', () => {
     expect(remainingWidth(1920, 1896)).toBe(0)
     expect(remainingWidth(1920, 2000)).toBe(0)
+  })
+})
+
+describe('conversationContentWidth', () => {
+  it('mirrors the conversation axis: 64% of the column, clamped to 680–920', () => {
+    expect(conversationContentWidth(2280, null)).toBe(920)
+    expect(conversationContentWidth(1000, null)).toBe(680)
+    expect(conversationContentWidth(800, null)).toBe(680)
+  })
+
+  it('clamps a stored preference into the same envelope', () => {
+    expect(conversationContentWidth(2280, 500)).toBe(640)
+    expect(conversationContentWidth(2280, 9999)).toBe(2104)
+    expect(conversationContentWidth(700, 800)).toBe(640)
   })
 })
 

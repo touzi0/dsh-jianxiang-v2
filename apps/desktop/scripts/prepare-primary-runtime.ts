@@ -161,7 +161,7 @@ export function smokePrimaryRuntime(root: string): void {
   const entries = workspaceDependencyPaths(root, manifest)
   const options = { stdio: 'inherit', timeout: 120_000, env: scrubWindowsSigningEnvironment(process.env) } as const
   execFileSync(entries.python, ['-I', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
-  execFileSync(entries.python, ['-I', '-B', join(import.meta.dirname, 'smoke-primary-runtime.py'), JSON.stringify(manifest.pythonPackages),
+  execFileSync(entries.python, ['-I', '-B', join(import.meta.dirname, 'smoke-primary-runtime.py'), join(root, 'runtime.json'),
     manifest.components.python, join(dirname(root), 'office-skills', 'scripts', 'check_office.py')], options)
   execFileSync(entries.python, ['-I', '-B', '-m', 'pip', 'check'], options)
   execFileSync(entries.node, ['-e', `if (process.versions.node !== ${JSON.stringify(manifest.components.node)}) process.exit(1)`], options)

@@ -1,0 +1,37 @@
+{
+  "name": "dsh-digital-assistant",
+  "version": "0.1.0",
+  "description": "数字助理：侧边栏主对话入口，把用户需求分发到指定工作区的新会话，跑完把压缩摘要回报",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "数字助理：侧边栏「新建会话」下方的主对话；它按你的需求选工作区、模式、模型、权限，把活派给别的会话，跑完把压缩摘要回报给你",
+    "defaultEnabled": true
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-tool-ask-user": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "selftest": "node selftest-summary.mts && node selftest-gateway.mts && node selftest-client.mts"
+  }
+}

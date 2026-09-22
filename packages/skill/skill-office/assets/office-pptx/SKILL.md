@@ -1,6 +1,6 @@
 ---
 name: office-pptx
-description: Create, read, edit, and check PowerPoint presentations (.pptx), including slide text, tables, images, and charts. Use when a PPTX file is an input or requested deliverable.
+description: Create, read, edit, and check PowerPoint presentations (.pptx), including slide text, tables, images, and charts. Use when a PPTX file is an input or requested deliverable, or when the user asks for 幻灯片、演示文稿、PPT to be produced or edited.
 ---
 
 # PowerPoint presentations

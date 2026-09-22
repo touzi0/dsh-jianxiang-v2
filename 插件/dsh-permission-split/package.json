@@ -1,0 +1,37 @@
+{
+  "name": "dsh-permission-split",
+  "version": "1.0.0",
+  "description": "权限分离：官方权限菜单右侧新增三项会话内能力授权（浏览器 / 电脑 / 沙箱外命令），勾上后模型调用该类工具不再弹窗",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "权限两列化：左列官方预设原样保留，右列三项能力多选方框；已授权能力上的审批请求直接认领，不再弹窗",
+    "replaces": [
+      "ui-permission"
+    ]
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*",
+    "@deepseek-ai/dsh-sandbox-policy": "*",
+    "@deepseek-ai/dsh-user-approval": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

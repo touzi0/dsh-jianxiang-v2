@@ -1,0 +1,26 @@
+{
+  "name": "dsh-ssh-rm-rewrite",
+  "version": "1.0.0",
+  "description": "SSH 远端 rm 自动改写：结构简单的远端 rm 原地改写为「移入远端回收站」，工具结果追加标注告知模型；官方 SSH 套件升级后意义有限，默认关闭",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "jx": {
+    "description": "远端 rm 改写（拆分自 dsh-ssh-guard）：ssh 载体上结构简单的 rm 改写为移入回收站（模型可见标注，保留 N 天自动清理）；改写失败转人工确认。官方远端已有沙箱管控，本模组默认关闭，需要时在设置页开启",
+    "defaultEnabled": false,
+    "config": {
+      "trashDir": "~/.jx-trash",
+      "retentionDays": 7
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-util-values": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

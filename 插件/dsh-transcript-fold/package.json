@@ -1,0 +1,44 @@
+{
+  "name": "dsh-transcript-fold",
+  "version": "1.0.0",
+  "description": "折叠时机模组：按最终输出与长中间正文折叠回合过程（替换官方 ui-chat）",
+  "type": "module",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-input-trigger",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "折叠时机（坚祥定制）：最终输出一出现就折叠它上方的思考与工具；助手中间正文达到 3 行或 85 全角当量字时，该段保持可见、并在它上方折叠；没有锚点时中途不折",
+    "replaces": [
+      "ui-chat"
+    ]
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/schemastery": "workspace:^"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

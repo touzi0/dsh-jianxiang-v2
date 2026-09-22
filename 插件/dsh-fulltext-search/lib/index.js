@@ -84,10 +84,15 @@ const SNAPSHOT_TTL_MS = 6e4;
 /** 摘要窗口：以命中位置为中心的前后码点数。 */
 const SNIPPET_RADIUS = 60;
 var JxSearchGateway = class extends TypertRemoteService {
-	static inject = ["sessionQuery"];
+	static inject = ["sessionQuery", "workspaceRegistry"];
 	snapshot;
 	constructor(ctx) {
 		super(ctx, "jxSearch");
+	}
+	/** 宿主 workspaceRegistry 的归档集合（registry 不可用时视为无归档）。 */
+	archivedSessionIds() {
+		const registry = this.ctx.workspaceRegistry;
+		return registry === void 0 ? [] : [...registry.archivedSessionIds ?? []];
 	}
 	/**
 	* 逐字扫描一批会话（每会话命中即止）。
@@ -103,12 +108,13 @@ var JxSearchGateway = class extends TypertRemoteService {
 		const sessionQuery = this.ctx.sessionQuery;
 		if (this.snapshot === void 0 || this.snapshot.query !== needle || Date.now() - this.snapshot.at > SNAPSHOT_TTL_MS) {
 			const records = await sessionQuery.listSessions();
+			const archived = new Set(this.archivedSessionIds());
 			this.snapshot = {
 				query: needle,
 				ids: sessionScanOrder(records.map((record) => ({
 					id: record.header.id,
 					cwd: record.header.cwd
-				}))),
+				}))).filter((id) => !archived.has(id)),
 				at: Date.now()
 			};
 		}

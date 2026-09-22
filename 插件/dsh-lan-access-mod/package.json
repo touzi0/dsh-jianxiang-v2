@@ -1,0 +1,27 @@
+{
+  "name": "dsh-lan-access-mod",
+  "version": "1.0.0",
+  "description": "局域网访问开关模组：把 webserver 行的 host 覆盖为 0.0.0.0（绑定全部网卡，官方 schema 明确接受的两个字面量之一）。绑定后官方自动采样局域网 IPv4、在 dsh web: 行尾打印 (LAN: http://<ip>:3080/?token=...) 并放行 /api 信任围栏。可在 设置→插件→坚祥模组 里一键停用回到仅本机访问。",
+  "type": "module",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "jx": {
+    "description": "局域网访问（坚祥定制）：把 web 服务器绑定从 127.0.0.1 改为 0.0.0.0，同一 Wi-Fi 下的电脑/手机可用「dsh web:」行里 (LAN: ...) 的网址直接访问；停用即恢复仅本机。",
+    "overrides": [
+      {
+        "id": "webserver",
+        "config": {
+          "host": "0.0.0.0",
+          "port": 3080,
+          "compression": "gzip",
+          "compressionLevel": 1,
+          "compressionThresholdBytes": 1024
+        }
+      }
+    ]
+  }
+}

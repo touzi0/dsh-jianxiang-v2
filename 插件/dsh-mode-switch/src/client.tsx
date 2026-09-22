@@ -5,10 +5,15 @@
  * jxPreset/switch 强切（官方 select 对已开谈会话会拒绝）。
  * 结构沿用 dsh-mod-manager 验证过的模式：顶层 $mount 自有命名空间，
  * 子插件（inject remote.jxPreset）注册槽；session 槽的 inject 工厂收 sessionId。
+ *
+ * 外观复用官方原生：本药丸与官方新会话界面的「代理预设」芯片
+ * （packages/client/ui-agent-preset/src/client/AgentPresetSeat）是同一个控件
+ * ——同样的图标 + 名称 + 箭头、同样的 Menu 行结构——因此芯片与菜单行的样式
+ * 逐条照搬那边（见 SEAT_STYLE），官方长什么样这里就长什么样。
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { z } from 'zod'
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Menu,
   IconAgentPresetOutline16,
@@ -75,23 +80,24 @@ interface SwitchState {
   error: string | null
 }
 
-const styles = {
-  trigger: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-    border: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
-    borderRadius: 999,
-    background: 'transparent',
-    color: 'inherit',
-    padding: '3px 10px',
-    fontSize: 13,
-    lineHeight: '20px',
-    cursor: 'pointer',
-  } satisfies CSSProperties,
-  icon: { display: 'inline-flex', alignItems: 'center' } satisfies CSSProperties,
-  chevronOpen: { transform: 'rotate(180deg)' } satisfies CSSProperties,
-} as const
+/**
+ * 药丸与菜单行样式：取值逐条来自官方 AgentPresetSeat.module.css，
+ * 类名加 `jx-ms-` 前缀（插件不能引官方包的 CSS Module，行内样式又表达不了
+ * hover / :disabled / 展开态，故整表挂进 document.head 一次）。
+ */
+const SEAT_STYLE = `
+.jx-ms-anchor{min-width:54px;max-width:100%}
+.jx-ms-seat{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:min(100%,240px);min-height:28px;padding:0 8px;border:none;border-radius:16px;background:transparent;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;font-weight:500;white-space:nowrap;cursor:pointer}
+.jx-ms-seat:not(:disabled):hover,.jx-ms-seat[aria-expanded='true']{background:var(--dsw-alias-interactive-bg-hover)}
+.jx-ms-seat:disabled{cursor:default;color:var(--dsw-alias-label-quaternary)}
+.jx-ms-seat-icon{flex:none;color:var(--dsw-alias-label-primary)}
+.jx-ms-seat-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jx-ms-chevron{flex:none;color:var(--dsw-alias-label-caption);transition:transform 120ms ease}
+.jx-ms-chevron-open{transform:rotate(180deg)}
+.jx-ms-item{display:flex;flex-direction:column;gap:2px;max-width:280px}
+.jx-ms-item-name{font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary)}
+.jx-ms-item-desc{font-size:12px;line-height:16px;color:var(--dsw-alias-label-caption);white-space:normal}
+`
 
 function presetName(option: PresetRow): string {
   return option.name ?? option.id
@@ -117,6 +123,10 @@ export function ModeSwitchButton({
     void load()
   }, [load])
 
+  // 数字助理的主对话不需要切模式（它只负责分发任务），别在那里显示这个药丸。
+  // 会话 id 由模组 dsh-digital-assistant 固定；见《修改记录》条目 79。
+  if (sessionId === 'session-jx-assistant') return null
+
   if (state.options.length === 0) return null
 
   const currentOption = state.options.find(option => option.id === current)
@@ -124,12 +134,20 @@ export function ModeSwitchButton({
   if (label === undefined) return null
 
   const disabled = state.busy || running
+  // 菜单行与官方一致：名称一行、灰色小字描述一行（官方 AgentPresetSeat 的
+  // 行结构），短到一行装不下时说明文字自行折行，不再挤成一个「名 — 描述」长串。
   const items: MenuEntry[] = state.options.map(option => ({
     id: option.id,
-    label: option.description === undefined
-      ? presetName(option)
-      : `${presetName(option)} — ${option.description}`,
+    label: (
+      <span className="jx-ms-item">
+        <span className="jx-ms-item-name">{presetName(option)}</span>
+        {option.description === undefined || option.description === ''
+          ? null
+          : <span className="jx-ms-item-desc">{option.description}</span>}
+      </span>
+    ),
   }))
+  const triggerTitle = state.error ?? '切换当前会话的工作模式'
 
   return (
     <Menu
@@ -144,25 +162,23 @@ export function ModeSwitchButton({
       side="top"
       align="start"
       portal
+      className="jx-ms-anchor"
       anchor={(
         <button
           type="button"
-          style={{
-            ...styles.trigger,
-            ...(disabled ? { opacity: 0.5, cursor: 'default' } satisfies CSSProperties : {}),
-          }}
+          className="jx-ms-seat"
           aria-label={`切换工作模式，当前 ${label}`}
           aria-haspopup="menu"
           aria-expanded={open}
-          title={state.error ?? '切换当前会话的工作模式'}
+          title={triggerTitle}
           disabled={disabled}
           onClick={() => { setOpen(value => !value) }}
         >
-          <span style={styles.icon} aria-hidden><IconAgentPresetOutline16 /></span>
-          <span>{label}</span>
-          <span style={{ ...styles.icon, ...(open ? styles.chevronOpen : {}) }} aria-hidden>
-            <IconChevronDownOutline14 />
-          </span>
+          <IconAgentPresetOutline16 className="jx-ms-seat-icon" />
+          <span className="jx-ms-seat-label">{label}</span>
+          <IconChevronDownOutline14
+            className={open ? 'jx-ms-chevron jx-ms-chevron-open' : 'jx-ms-chevron'}
+          />
         </button>
       )}
     />
@@ -238,6 +254,16 @@ class ModeSwitchController {
 export const inject = ['remote']
 
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
+  // 样式先挂进 document.head：药丸未挂载的会话（无预设）也有样式，反复挂载
+  // 卸载只留一份；fiber 拆除时随 effect 一起撤掉。
+  const disposeStyle = ctx.effect(() => {
+    const style = document.createElement('style')
+    style.dataset.jxModeSwitch = 'seat'
+    style.textContent = SEAT_STYLE
+    document.head.append(style)
+    return () => { style.remove() }
+  }, 'dsh-mode-switch: native seat styles')
+
   const disposeMount = await ctx.remote.$mount(TYPERT_REMOTE)
 
   const disposeButton = ctx.plugin({
@@ -265,5 +291,6 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   return async () => {
     await disposeButton()
     await disposeMount()
+    await disposeStyle()
   }
 }

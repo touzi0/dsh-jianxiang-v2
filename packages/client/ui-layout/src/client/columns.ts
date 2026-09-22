@@ -49,6 +49,26 @@ export function remainingWidth(frameRight: number, contentRight: number): number
   return Math.max(0, Math.round(frameRight - contentRight - RIGHTBAR_CONTENT_GUTTER))
 }
 
+/** localStorage key of the user's dragged transcript width preference (ui-conversation owns it). */
+export const CONTENT_WIDTH_STORAGE_KEY = 'dsh.conversation.contentWidth'
+
+/**
+ * The conversation's content-axis width, mirroring ui-conversation's own rule
+ * (`resolveContentWidth` in ConversationWidthControls): a stored preference
+ * clamped to the column, else 64% of the column clamped to 680–920. The frame
+ * uses it to derive the panel's width when the centre occupant publishes no
+ * measurable content column (no session yet, non-chat view), so the panel then
+ * still fills the real gap instead of a frame ratio.
+ * @param columnWidth - the conversation column's width in px.
+ * @param preference - the user's stored width preference in px, or null.
+ * @returns the content-axis width in px.
+ */
+export function conversationContentWidth(columnWidth: number, preference: number | null): number {
+  const max = Math.max(640, columnWidth - 176)
+  if (preference !== null) return Math.min(Math.max(preference, 640), max)
+  return Math.max(680, Math.min(columnWidth * 0.64, 920))
+}
+
 /**
  * Clamp a panel width into its contract range.
  * @param px - requested width.

@@ -69,14 +69,14 @@ describe('Session ordering', () => {
     )).toEqual([sid('tie-a'), sid('tie-b'), sid('older')])
   })
 
-  it('reconciles retained manual slots and appends newly known members by recency', () => {
+  it('reconciles retained manual slots behind newly known members placed by recency', () => {
     const summaries = list(summary('kept', 1), summary('newer', 30), summary('older', 20)).byId
     expect(reconcileManualOrder(
       [sid('saved-without-summary'), sid('kept'), sid('newer'), sid('older'), sid('new-without-summary')],
       ['departed', 'saved-without-summary', 'kept'],
       summaries,
     )).toEqual([
-      sid('saved-without-summary'), sid('kept'), sid('newer'), sid('older'),
+      sid('newer'), sid('older'), sid('saved-without-summary'), sid('kept'),
     ])
   })
 
@@ -134,7 +134,7 @@ describe('deriveGroups', () => {
     expect(groups[1]!.sessions.map(session => session.id)).toEqual([sid('loose')])
   })
 
-  it('applies stored Ungrouped order and appends new loose Sessions by recency', () => {
+  it('applies stored Ungrouped order and leads new loose Sessions by recency', () => {
     const sessions = list(summary('one', 3), summary('two', 2), summary('new', 4))
     const groups = deriveGroups(
       sessions,
@@ -144,7 +144,7 @@ describe('deriveGroups', () => {
       view([UNGROUPED_KEY], ['two', 'stale', 'two']),
     )
     expect(groups[0]!.sessions.map(session => session.id)).toEqual([
-      sid('two'), sid('new'), sid('one'),
+      sid('new'), sid('one'), sid('two'),
     ])
   })
 

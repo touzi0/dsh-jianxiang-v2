@@ -1,7 +1,7 @@
 {
   "name": "dsh-git-panel",
-  "version": "0.1.0",
-  "description": "Git 面板：右侧面板里只读展示当前会话仓库的分支、改动、diff 与提交历史",
+  "version": "0.2.0",
+  "description": "Git 面板：右侧面板里展示当前会话仓库的分支、改动、diff 与提交历史，支持暂存/取消暂存/提交（含 AI 生成提交摘要）",
   "type": "module",
   "private": true,
   "main": "./lib/index.js",
@@ -20,12 +20,13 @@
     }
   },
   "jx": {
-    "description": "Git 面板：右侧面板标签页，识别当前会话的 git 仓库，只读展示分支与上游领先/落后、已暂存/未暂存/未跟踪改动、逐行 diff 与最近提交历史（可切换同目录下的其它仓库）。不提供任何写操作。",
+    "description": "Git 面板：右侧面板标签页，识别当前会话的 git 仓库（多仓库可切换），展示分支与上游领先/落后、已暂存/未暂存/未跟踪改动（逐行 diff）、提交历史时间线；可暂存/取消暂存/提交，提交信息可 AI 生成。不做 push/pull/丢弃更改。",
     "defaultEnabled": true
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-typert-protocol": "*"
+    "@deepseek-ai/dsh-typert-protocol": "*",
+    "@deepseek-ai/dsh-llm": "*"
   },
   "scripts": {
     "build": "node build.mjs",

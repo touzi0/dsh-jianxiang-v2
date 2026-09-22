@@ -1,6 +1,6 @@
 ---
 name: office-docx
-description: Create, read, edit, and check Word documents (.docx), including reports, letters, and formatted tables. Use when a DOCX file is an input or requested deliverable.
+description: Create, read, edit, and check Word documents (.docx), including reports, letters, and formatted tables. Use when a DOCX file is an input or requested deliverable, or when the user asks for 文档、报告、合同、信件、总结 to be produced or edited as Word.
 ---
 
 # Word documents

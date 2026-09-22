@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "坚祥数字助理",
+  "short_name": "坚祥",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",

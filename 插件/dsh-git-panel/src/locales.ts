@@ -38,6 +38,21 @@ export const zh = {
   expand: '展开全部',
   collapse: '收起',
   close: '关闭本页',
+  stageAll: '全部暂存',
+  unstageAll: '全部取消暂存',
+  stageFile: '暂存此文件',
+  unstageFile: '取消暂存此文件',
+  stageBusy: '处理中…',
+  commitTitle: '提交',
+  messagePlaceholder: '提交信息（可多行）…',
+  aiCommit: 'AI 生成摘要并提交',
+  typedCommit: '按已输入内容提交',
+  generating: '正在生成提交摘要…',
+  committing: '正在提交…',
+  committed: '已提交',
+  commitFailed: '提交失败',
+  aiFailed: '生成摘要失败',
+  emptyMessage: '请先输入提交信息，或点「AI 生成摘要并提交」',
 }
 
 /** 英文文案。 */
@@ -75,6 +90,21 @@ export const en = {
   expand: 'Show all',
   collapse: 'Collapse',
   close: 'Close this page',
+  stageAll: 'Stage all',
+  unstageAll: 'Unstage all',
+  stageFile: 'Stage this file',
+  unstageFile: 'Unstage this file',
+  stageBusy: 'Working…',
+  commitTitle: 'Commit',
+  messagePlaceholder: 'Commit message (multi-line)…',
+  aiCommit: 'Generate summary with AI & commit',
+  typedCommit: 'Commit typed message',
+  generating: 'Generating commit summary…',
+  committing: 'Committing…',
+  committed: 'Committed',
+  commitFailed: 'Commit failed',
+  aiFailed: 'Could not generate the summary',
+  emptyMessage: 'Type a message first, or use “Generate summary with AI & commit”',
 }
 
 /** 本插件拥有的文案键。 */

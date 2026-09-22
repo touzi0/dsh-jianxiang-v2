@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { BlockAssembler, createUserMessage } from "@deepseek-ai/dsh-llm";
 //#region src/git.ts
 /**
 * Git 面板的纯逻辑层（宿主半边）：porcelain 输出解析、diff 行分类、文本截断与仓库定位。
@@ -275,18 +276,54 @@ function findRepositories(base, maxDepth) {
 function repositoryName(path) {
 	return basename(path) === "" ? path : basename(path);
 }
+/** 提交信息字符数上限（单个 -m 参数的安全边界）。 */
+const MESSAGE_MAX_CHARS = 4e3;
+/**
+* 净化提交信息：去掉控制字符（换行保留——多行提交信息合法）、压缩多余空行、限长。
+* @param message - 用户输入或 AI 生成的提交信息原文。
+* @returns 可安全作为单个 -m 参数的文本；空串表示没有可用内容。
+*/
+function sanitizeMessage(message) {
+	return message.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, "").replace(/\r\n?/gu, "\n").replace(/\n{3,}/gu, "\n\n").trim().slice(0, MESSAGE_MAX_CHARS);
+}
+/**
+* 过滤出一组可安全传给 git 的 pathspec（在 `--` 之后作为独立 argv 元素使用）：
+* 拒绝绝对路径、`..`/`.` 段、pathspec magic 前缀、目录形式、含 NUL 的项，并去重限数。
+* @param paths - 浏览器送来的路径列表。
+* @returns 通过校验的路径（保持原顺序）。
+*/
+function safePathspecs(paths) {
+	const seen = /* @__PURE__ */ new Set();
+	const ok = [];
+	for (const path of paths) {
+		if (ok.length >= 500) break;
+		if (path === "" || path.includes("\0") || path.length > 4096) continue;
+		if (/^[a-zA-Z]:[\\/]/u.test(path) || path.startsWith("/") || path.startsWith("\\")) continue;
+		if (path.startsWith(":") || path.startsWith("!") || path.startsWith("^")) continue;
+		const segments = path.split(/[\\/]/u);
+		if (segments.includes("..") || segments.includes(".")) continue;
+		if (path.endsWith("/")) continue;
+		if (seen.has(path)) continue;
+		seen.add(path);
+		ok.push(path);
+	}
+	return ok;
+}
 //#endregion
 //#region src/index.ts
 /**
-* 坚祥 Git 面板 —— 宿主半边（只读）。
+* 坚祥 Git 面板 —— 宿主半边。
 *
 * 执行缝用官方 `ctx.subprocess`（显式 argv、永不过 shell、输出上限、AbortSignal 超时），
-* 不使用 `ctx.shell`（它只吃命令字符串并强制套沙箱）。白名单子命令只有
-* `rev-parse` / `status` / `diff` / `log` / `show` 五个读数命令，**没有任何写操作**；
+* 不使用 `ctx.shell`（它只吃命令字符串并强制套沙箱）。白名单子命令：
+* 读数 `rev-parse` / `status` / `diff` / `log` / `show`；
+* 本地写 `add` / `restore --staged` / `commit`（暂存、取消暂存、提交——全部只动 index 与本地历史，
+* 不做 push/pull/reset/checkout/discard 任何远端或工作区内容操作）；
 * `repo` 参数只能取本服务自己扫描出的候选仓库根，浏览器给不出任意路径。
 *
 * 工作目录由 sessionId 解析（活会话 header.cwd），仓库识别照官方
 * `workspace-changes` 的 `rev-parse --show-toplevel` 配方（该包不导出可复用 API）。
+* AI 提交摘要走官方 `ctx.llm`（与 dsh-ssh-review 的快评同一用法）。
 */
 /** 单条 git 命令的超时（只读命令；仓库很大时 status 也可能慢）。 */
 const GIT_TIMEOUT_MS = 15e3;
@@ -307,8 +344,19 @@ const LOG_DEFAULT = 30;
 const LOG_MAX = 100;
 /** 候选仓库扫描结果的缓存时长。 */
 const SCAN_TTL_MS = 1e4;
+/** AI 摘要用的供应商与模型（与 dsh-ssh-review 的快评同款默认）。 */
+const SUMMARY_PROVIDER = "deepseek-official";
+const SUMMARY_MODEL = "deepseek-chat";
+/** AI 摘要的 LLM 超时。 */
+const SUMMARY_TIMEOUT_MS = 45e3;
+/** 喂给 LLM 的 staged diff 文本上限。 */
+const SUMMARY_DIFF_MAX_CHARS = 24e3;
 var JxGitGateway = class extends TypertRemoteService {
-	static inject = ["subprocess", "sessions"];
+	static inject = [
+		"subprocess",
+		"sessions",
+		"llm"
+	];
 	scans = /* @__PURE__ */ new Map();
 	constructor(ctx) {
 		super(ctx, "jxGit");
@@ -641,6 +689,151 @@ var JxGitGateway = class extends TypertRemoteService {
 			return;
 		}
 	}
+	/**
+	* 暂存一批文件（git add；未跟踪文件同样适用）。
+	* 只动 index，不改工作区内容，可随时用 unstage 撤销。
+	* @param sessionId - 目标会话 id。
+	* @param repo - 选中的仓库根（空串=默认仓库）。
+	* @param paths - 仓库内相对路径列表（逐项校验，见 safePathspecs）。
+	* @param signal - 浏览器侧取消信号（必须最后）。
+	* @returns 实际生效的路径条数。
+	*/
+	async stage(sessionId, repo, paths, signal) {
+		const spec = safePathspecs(paths);
+		if (spec.length === 0) throw new Error("没有可暂存的路径（列表为空或全部未通过校验）。");
+		const { root } = await this.resolveRepo(sessionId, repo, signal);
+		if (root === "") throw new Error("当前会话目录不是 git 仓库，无法暂存。");
+		const found = await this.runGit(root, [
+			"add",
+			"--",
+			...spec
+		], signal);
+		if (found.exitCode !== 0) throw new Error(`git add 失败（退出码 ${String(found.exitCode)}）：${found.stderr.trim()}`);
+		return { count: spec.length };
+	}
+	/**
+	* 取消暂存一批文件（git restore --staged；把 index 恢复成 HEAD 的样子）。
+	* 同样只动 index，工作区内容不受影响。
+	* @param sessionId - 目标会话 id。
+	* @param repo - 选中的仓库根（空串=默认仓库）。
+	* @param paths - 仓库内相对路径列表。
+	* @param signal - 浏览器侧取消信号（必须最后）。
+	* @returns 实际生效的路径条数。
+	*/
+	async unstage(sessionId, repo, paths, signal) {
+		const spec = safePathspecs(paths);
+		if (spec.length === 0) throw new Error("没有可取消暂存的路径（列表为空或全部未通过校验）。");
+		const { root } = await this.resolveRepo(sessionId, repo, signal);
+		if (root === "") throw new Error("当前会话目录不是 git 仓库，无法取消暂存。");
+		const found = await this.runGit(root, [
+			"restore",
+			"--staged",
+			"--",
+			...spec
+		], signal);
+		if (found.exitCode !== 0) {
+			if ((await this.runGit(root, [
+				"rm",
+				"--cached",
+				"--",
+				...spec
+			], signal)).exitCode !== 0) throw new Error(`git restore --staged 失败（退出码 ${String(found.exitCode)}）：${found.stderr.trim()}`);
+		}
+		return { count: spec.length };
+	}
+	/**
+	* 用给定信息提交已暂存的改动（git commit -m）。
+	* 只提交 index 里已有的内容；没有已暂存改动时 git 自己报错并原样转述。
+	* @param sessionId - 目标会话 id。
+	* @param repo - 选中的仓库根（空串=默认仓库）。
+	* @param message - 提交信息（净化后作为单个 -m 参数）。
+	* @param signal - 浏览器侧取消信号（必须最后）。
+	* @returns git 输出的提交摘要行。
+	*/
+	async commit(sessionId, repo, message, signal) {
+		const text = sanitizeMessage(message);
+		if (text === "") throw new Error("提交信息为空：请先输入内容，或用「AI 生成摘要并提交」。");
+		const { root } = await this.resolveRepo(sessionId, repo, signal);
+		if (root === "") throw new Error("当前会话目录不是 git 仓库，无法提交。");
+		const found = await this.runGit(root, [
+			"commit",
+			"-m",
+			text
+		], signal);
+		if (found.exitCode !== 0) throw new Error(`git commit 失败（退出码 ${String(found.exitCode)}）：${found.stderr.trim()}`);
+		return { summary: found.stdout.split("\n").find((line) => line.trim() !== "") ?? "" };
+	}
+	/**
+	* 用 LLM 为已暂存的改动生成一条提交信息（不提交，只生成）。
+	* 汇总 stat 概览 + 截断后的 diff 正文喂给模型，要求输出简洁的
+	* conventional commit 主题行（可带正文）。
+	* @param sessionId - 目标会话 id。
+	* @param repo - 选中的仓库根（空串=默认仓库）。
+	* @param signal - 浏览器侧取消信号（必须最后）。
+	* @returns 生成的提交信息。
+	*/
+	async summarize(sessionId, repo, signal) {
+		const { root } = await this.resolveRepo(sessionId, repo, signal);
+		if (root === "") throw new Error("当前会话目录不是 git 仓库，无法生成摘要。");
+		const stat = await this.runGit(root, [
+			"diff",
+			"--cached",
+			"--no-color",
+			"--stat"
+		], signal);
+		if (stat.exitCode !== 0) throw new Error(`git diff --cached --stat 失败（退出码 ${String(stat.exitCode)}）：${stat.stderr.trim()}`);
+		if (stat.stdout.trim() === "") throw new Error("没有已暂存的改动：请先暂存再生成摘要。");
+		const patch = await this.runGit(root, [
+			"diff",
+			"--cached",
+			"--no-color",
+			"--no-ext-diff",
+			"--unified=1"
+		], signal);
+		const diffText = `${stat.stdout}\n${patch.stdout}`.slice(0, SUMMARY_DIFF_MAX_CHARS);
+		const cleaned = sanitizeMessage(await this.summarizeWithLlm(diffText, signal));
+		if (cleaned === "") throw new Error("AI 生成的摘要为空，请重试或手动输入提交信息。");
+		return { message: cleaned };
+	}
+	/**
+	* 调官方 LLM 生成提交信息（流式收块；超时或失败向上抛）。
+	* @param diffText - 已暂存改动的 diff 文本（已截断）。
+	* @param signal - 取消信号。
+	* @returns 模型输出的提交信息原文。
+	*/
+	async summarizeWithLlm(diffText, signal) {
+		const llm = this.ctx.llm;
+		if (llm === void 0) throw new Error("宿主没有可用的 LLM 服务，无法生成摘要。");
+		const system = [
+			"你是提交信息撰写员。根据给定的 git 已暂存改动（stat 概览 + diff），写一条提交信息。",
+			"要求：第一行是简洁的主题（不超过 50 个字，中文，必要时可用 conventional commit 前缀如 fix:/feat:/docs:），",
+			"如果改动较复杂可以再空一行写 2-4 行正文说明要点。",
+			"只输出提交信息本身：不要代码块、不要引号、不要解释、不要 signature。"
+		].join("\n");
+		const user = createUserMessage({
+			content: [{
+				type: "text",
+				text: diffText
+			}],
+			source: {
+				kind: "plugin",
+				plugin: "dsh-git-panel"
+			}
+		});
+		const timeout = AbortSignal.timeout(SUMMARY_TIMEOUT_MS);
+		const fused = signal === void 0 ? timeout : AbortSignal.any([signal, timeout]);
+		const assembler = new BlockAssembler();
+		for await (const chunk of llm.stream({
+			provider: SUMMARY_PROVIDER,
+			model: SUMMARY_MODEL,
+			messages: [user],
+			system,
+			temperature: 0,
+			maxTokens: 300,
+			signal: fused
+		})) assembler.push(chunk);
+		return assembler.blocks().filter((block) => block.type === "text").map((block) => block.text).join("\n").trim();
+	}
 };
 const REMOTE_METHODS_KEY = "@deepseek-ai/dsh-typert-protocol/remote-methods";
 /** 一个直调方法的标记。 */
@@ -656,7 +849,11 @@ Object.defineProperty(JxGitGateway.prototype, REMOTE_METHODS_KEY, {
 			direct("status"),
 			direct("diff"),
 			direct("log"),
-			direct("show")
+			direct("show"),
+			direct("stage"),
+			direct("unstage"),
+			direct("commit"),
+			direct("summarize")
 		])
 	})
 });

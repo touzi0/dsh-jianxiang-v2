@@ -65,7 +65,8 @@ interface TitleEvent {
 }
 interface TitleSession {
   readonly id: string
-  readonly events: readonly TitleEvent[]
+  /** 0.1.6 起 Session 以 snapshotEvents() 暴露事件快照（旧 events getter 已移除）。 */
+  snapshotEvents(): readonly TitleEvent[]
   append(type: string, data: unknown): unknown
 }
 interface TitleRequest {
@@ -262,7 +263,7 @@ export function apply(ctx: Context, config: Config): void {
       const session = request.session
       const latestSeq = request.messages.at(-1)?.seq ?? first.seq
       if (!covered.has(session.id) && !anchored.has(session.id)) {
-        const restored = restoreFromLog(session.events, name, {
+        const restored = restoreFromLog(session.snapshotEvents(), name, {
           texts: request.messages.map(message => message.text),
           minChars: policy.rawQuoteChars,
         })

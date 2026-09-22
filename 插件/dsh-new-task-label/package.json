@@ -1,0 +1,27 @@
+{
+  "name": "dsh-new-task-label",
+  "version": "1.0.0",
+  "description": "把侧边栏「新会话 / 新建会话」的界面文案改成「新工作任务」：注册官方语言包变体「中文·坚祥 / English·Jianxiang」，全部走官方 locale 词典机制，不改 DOM 文本",
+  "type": "module",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "把界面上的「新会话 / 新建会话」改叫「新工作任务」（官方 locale 语言包机制，中英双语；设置 → 通用 → 语言里会多出「中文·坚祥」一项并自动选中，随时可切回官方「中文」复原）",
+    "defaultEnabled": true
+  }
+}

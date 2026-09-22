@@ -11,5 +11,5 @@ export default defineConfig({
   target: 'node20',
   dts: false,
   clean: false,
-  external: ['@deepseek-ai/cordis', '@deepseek-ai/dsh-typert-protocol'],
+  external: ['@deepseek-ai/cordis', '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-llm'],
 })

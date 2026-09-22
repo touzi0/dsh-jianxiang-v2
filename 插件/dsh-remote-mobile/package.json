@@ -1,0 +1,81 @@
+{
+  "name": "dsh-remote-mobile",
+  "version": "1.7.0",
+  "description": "DeepSeek Harness 远程与移动端安全网关插件：零修改 DSH 底层代码安全开放局域网与 Tailscale 连接 | DeepSeek Harness (DSH) Remote & Mobile Security Guard: safely opens Tailscale/LAN with zero core modifications, QR scan auth, RSA encryption & brute-force defense.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "tailscale",
+    "remote-access",
+    "mobile",
+    "cordis-plugin",
+    "auth"
+  ],
+  "homepage": "https://github.com/IceApriler/dsh-remote-mobile#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IceApriler/dsh-remote-mobile.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IceApriler/dsh-remote-mobile/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "rm -rf lib && tsc && node scripts/build-client.js",
+    "build:server": "tsc",
+    "build:client": "node scripts/build-client.js",
+    "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/build-client.js",
+    "test": "node --test test/**/*.test.js",
+    "prepublishOnly": "npm run build && npm test",
+    "release": "node scripts/release.js",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
+    "release:current": "node scripts/release.js current"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README_EN.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

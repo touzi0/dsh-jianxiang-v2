@@ -217,7 +217,7 @@ function apply(ctx, config) {
 				const session = request.session;
 				const latestSeq = request.messages.at(-1)?.seq ?? first.seq;
 				if (!covered.has(session.id) && !anchored.has(session.id)) {
-					const restored = restoreFromLog(session.events, name, {
+					const restored = restoreFromLog(session.snapshotEvents(), name, {
 						texts: request.messages.map((message) => message.text),
 						minChars: policy.rawQuoteChars
 					});

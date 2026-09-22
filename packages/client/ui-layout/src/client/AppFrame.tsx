@@ -28,7 +28,8 @@ import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  computeColumns, remainingWidth, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MIN,
+  computeColumns, CONTENT_WIDTH_STORAGE_KEY, conversationContentWidth, remainingWidth,
+  RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_CONTENT_GUTTER, RIGHTBAR_MIN,
   SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT,
 } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
@@ -133,6 +134,19 @@ const CONVERSATION_CONTENT_SELECTOR = '[data-conversation-content] [data-chat-fl
 /** Centre occupant that publishes no message column (hero or non-chat view): its centered composer. */
 const CONVERSATION_COMPOSER_SELECTOR = '[data-conversation-content] [data-composer-seat] > *'
 
+/** The user's dragged transcript width preference, when a valid number is stored. */
+function storedContentWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(CONTENT_WIDTH_STORAGE_KEY)
+    if (raw === null) return null
+    const value = Number(raw)
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null // storage unavailable: the conversation's default axis applies
+  }
+}
+
+
 /** The three-column frame (see module doc). */
 export function AppFrame({
   useStore,
@@ -147,10 +161,10 @@ export function AppFrame({
   const viewport = layoutInfo.viewportWidth
   // Space between the conversation's content column and the frame's right edge,
   // as last measured; null while no centre occupant publishes a content column.
-  const [remaining, setRemaining] = useState<number | null>(null)
+  const [measured, setMeasured] = useState<number | null>(null)
   // Read inside the measurement pass, which runs between renders.
   const remainingRef = useRef<number | null>(null)
-  remainingRef.current = remaining
+  remainingRef.current = measured
   // Whether the render in flight reserves a right track. While one is reserved
   // the centre is already narrower than the closed geometry, so a measurement
   // taken then reports space the track itself made room for — the derived width
@@ -181,7 +195,7 @@ export function AppFrame({
         if (content !== null) observer.observe(content)
       }
       if (reservingTrack.current) return
-      setRemaining(content === null
+      setMeasured(content === null
         ? null
         : remainingWidth(el.getBoundingClientRect().right, content.getBoundingClientRect().right))
     }
@@ -219,14 +233,22 @@ export function AppFrame({
   const sidebarPreference = sidebarCollapsed
     ? 0
     : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
-  // First-open width: the space the conversation leaves at the frame's right
-  // edge, which needs no track. Too narrow for the panel (a frame that cannot
-  // hold both) falls back to the ratio default, and only then concedes a track.
-  const fillsConversationGap = layoutInfo.rightbar === null && remaining !== null && remaining >= RIGHTBAR_MIN
-  const rightbarPreference = layoutInfo.rightbar ?? (fillsConversationGap ? remaining : viewport * RIGHTBAR_DEFAULT_RATIO)
   // Desktop reopen controls occupy the macOS session header or Windows caption row.
   const collapsedWidth = document.documentElement.dataset.platform === 'darwin'
     || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
+  // While no DOM measurement has landed (no session yet, non-chat view), derive
+  // the same space from the conversation's own width rule: the closed centre
+  // minus its content axis, halved, less the gutter.
+  const closedSidebar = computeColumns(viewport, sidebarPreference, 0, collapsedWidth).sidebar
+  const closedCenter = viewport - closedSidebar
+  const computedRemaining = Math.max(0, Math.round(
+    (closedCenter - conversationContentWidth(closedCenter, storedContentWidth())) / 2 - RIGHTBAR_CONTENT_GUTTER))
+  const remaining = measured ?? computedRemaining
+  // First-open width: the space the conversation leaves at the frame's right
+  // edge, which needs no track. Too narrow for the panel (a frame that cannot
+  // hold both) falls back to the ratio default, and only then concedes a track.
+  const fillsConversationGap = layoutInfo.rightbar === null && remaining >= RIGHTBAR_MIN
+  const rightbarPreference = layoutInfo.rightbar ?? (fillsConversationGap ? remaining : viewport * RIGHTBAR_DEFAULT_RATIO)
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)

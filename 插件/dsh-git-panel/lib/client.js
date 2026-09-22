@@ -4117,6 +4117,58 @@ const TYPERT_REMOTE = {
 			],
 			result: result("show", commitSchema),
 			sourceLocation
+		},
+		{
+			id: `${PACKAGE}#jxGit/stage`,
+			service: "jxGit",
+			namespace: "jxGit",
+			method: "stage",
+			invocation: { kind: "direct" },
+			parameters: [
+				codec("stage", "sessionId", string()),
+				codec("stage", "repo", string()),
+				codec("stage", "paths", array(string()))
+			],
+			result: result("stage", object({ count: number() })),
+			sourceLocation
+		},
+		{
+			id: `${PACKAGE}#jxGit/unstage`,
+			service: "jxGit",
+			namespace: "jxGit",
+			method: "unstage",
+			invocation: { kind: "direct" },
+			parameters: [
+				codec("unstage", "sessionId", string()),
+				codec("unstage", "repo", string()),
+				codec("unstage", "paths", array(string()))
+			],
+			result: result("unstage", object({ count: number() })),
+			sourceLocation
+		},
+		{
+			id: `${PACKAGE}#jxGit/commit`,
+			service: "jxGit",
+			namespace: "jxGit",
+			method: "commit",
+			invocation: { kind: "direct" },
+			parameters: [
+				codec("commit", "sessionId", string()),
+				codec("commit", "repo", string()),
+				codec("commit", "message", string())
+			],
+			result: result("commit", object({ summary: string() })),
+			sourceLocation
+		},
+		{
+			id: `${PACKAGE}#jxGit/summarize`,
+			service: "jxGit",
+			namespace: "jxGit",
+			method: "summarize",
+			invocation: { kind: "direct" },
+			parameters: [codec("summarize", "sessionId", string()), codec("summarize", "repo", string())],
+			result: result("summarize", object({ message: string() })),
+			sourceLocation
 		}
 	]
 };
@@ -4174,7 +4226,22 @@ const zh = {
 	untrackedContent: "未跟踪文件：以下内容按「整份新增」展示",
 	expand: "展开全部",
 	collapse: "收起",
-	close: "关闭本页"
+	close: "关闭本页",
+	stageAll: "全部暂存",
+	unstageAll: "全部取消暂存",
+	stageFile: "暂存此文件",
+	unstageFile: "取消暂存此文件",
+	stageBusy: "处理中…",
+	commitTitle: "提交",
+	messagePlaceholder: "提交信息（可多行）…",
+	aiCommit: "AI 生成摘要并提交",
+	typedCommit: "按已输入内容提交",
+	generating: "正在生成提交摘要…",
+	committing: "正在提交…",
+	committed: "已提交",
+	commitFailed: "提交失败",
+	aiFailed: "生成摘要失败",
+	emptyMessage: "请先输入提交信息，或点「AI 生成摘要并提交」"
 };
 /** 英文文案。 */
 const en = {
@@ -4210,7 +4277,22 @@ const en = {
 	untrackedContent: "Untracked file: shown as a full addition",
 	expand: "Show all",
 	collapse: "Collapse",
-	close: "Close this page"
+	close: "Close this page",
+	stageAll: "Stage all",
+	unstageAll: "Unstage all",
+	stageFile: "Stage this file",
+	unstageFile: "Unstage this file",
+	stageBusy: "Working…",
+	commitTitle: "Commit",
+	messagePlaceholder: "Commit message (multi-line)…",
+	aiCommit: "Generate summary with AI & commit",
+	typedCommit: "Commit typed message",
+	generating: "Generating commit summary…",
+	committing: "Committing…",
+	committed: "Committed",
+	commitFailed: "Commit failed",
+	aiFailed: "Could not generate the summary",
+	emptyMessage: "Type a message first, or use “Generate summary with AI & commit”"
 };
 //#endregion
 //#region src/client.tsx
@@ -4221,9 +4303,11 @@ const en = {
 * 并在会话 header 的 actions 槽放一个入口按钮：右侧面板的「加号」只开引导页，
 * 插件自己的页靠 ctx.sidebarRight.openTab(kind) 打开。
 *
-* 数据全部来自宿主半边 jxGit Remote（只读 git 命令）；这里只做呈现：
-* 分支/上游领先落后、四组改动文件、点开看逐行 diff、提交历史与单次提交的文件与 diff。
-* v1 没有任何写操作按钮（提交/推送/回滚一律不做）。
+* 数据全部来自宿主半边 jxGit Remote（读数 + 本地暂存/取消暂存/提交 + AI 摘要）。
+* 视觉走自注入的 jxgit-* 样式表（tokens 优先、VS Code 风格状态色），悬停出逐文件
+* 暂存/取消暂存按钮；提交区是「信息框 + 两行按钮（AI 生成摘要并提交 / 按已输入提交）」；
+* 提交历史渲染成路线图（竖线 + 圆点）。diff 与路径全部作为 React 文本节点渲染（自动转义，
+* 绝不用 innerHTML）。不做 push/pull/丢弃更改这类动作。
 *
 * 只值导入平台基线模块（react）与 Cordis 服务，官方功能包一律不 import 值。
 */
@@ -4234,40 +4318,106 @@ const TAB_KIND = "jxGitPanel";
 const HISTORY_LIMIT = 30;
 /** diff 折叠时先渲染的行数（大 diff 不一次性塞进 DOM）。 */
 const COLLAPSED_LINES = 400;
-const TOKENS = {
-	text: "var(--dsw-alias-label-primary, #1f2328)",
-	secondary: "var(--dsw-alias-label-secondary, #57606a)",
-	tertiary: "var(--dsw-alias-label-tertiary, #6e7781)",
-	border: "var(--dsw-alias-border-l3, rgba(128,128,128,0.28))",
-	hover: "var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,0.12))",
-	surface: "var(--dsw-alias-bg-base, transparent)",
-	add: "var(--dsw-alias-state-success-primary, #2da44e)",
-	del: "var(--dsw-alias-state-error-primary, #cf222e)",
-	hunk: "var(--dsw-alias-label-tertiary, #6e7781)",
-	mono: "var(--dsh-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)"
+/** 注入样式表的 id（卸载时移除）。 */
+const STYLE_ID = "jx-git-panel-style";
+/** 改动状态字母的着色（VS Code 源代码管理视图的惯例）。 */
+const STATUS_COLORS = {
+	A: "#3fb950",
+	"?": "#3fb950",
+	M: "#d29922",
+	T: "#d29922",
+	D: "#f85149",
+	U: "#f85149",
+	R: "#4493f8",
+	C: "#39c5cf"
 };
-/** 改动状态字母的配色。 */
-function markColor(mark) {
-	if (mark === "A" || mark === "??") return TOKENS.add;
-	if (mark === "D") return TOKENS.del;
-	if (mark === "U") return TOKENS.del;
-	return TOKENS.secondary;
+/** 注入的样式表（tokens 优先，回退到中性配色；暗色主题下 token 生效即自动跟随）。 */
+const JXGIT_CSS = [
+	".jxgit{display:flex;flex-direction:column;height:100%;min-height:0;font-size:13px;",
+	"color:var(--dsw-alias-label-primary,#1f2328);",
+	"--jxg-quiet:var(--dsw-alias-label-tertiary,#8b949e);",
+	"--jxg-line:var(--dsw-alias-border-l3,rgba(128,128,128,.3));",
+	"--jxg-hover:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));",
+	"--jxg-soft:color-mix(in srgb,currentColor 4%,transparent);",
+	"--jxg-accent:var(--dsw-alias-label-link,#1f6feb);",
+	"--jxg-mono:var(--dsh-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace)}",
+	".jxgit *{box-sizing:border-box}",
+	".jxgit-head{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--jxg-line);flex:none;min-width:0}",
+	".jxgit-title{font-weight:600;flex:none}",
+	".jxgit-repo{flex:1;min-width:40px;max-width:100%;font-size:12px;color:inherit;padding:2px 4px;border:1px solid var(--jxg-line);border-radius:6px;background:transparent}",
+	".jxgit-iconbtn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:6px;background:transparent;color:var(--jxg-quiet);cursor:pointer;font-size:12px}",
+	".jxgit-iconbtn:hover{background:var(--jxg-hover);color:inherit}",
+	".jxgit-iconbtn:disabled{opacity:.5;cursor:default}",
+	".jxgit-body{flex:1;min-height:0;overflow-y:auto;padding:8px 10px 24px}",
+	".jxgit-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;color:var(--jxg-quiet)}",
+	".jxgit-chip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:99px;border:1px solid var(--jxg-line);white-space:nowrap}",
+	".jxgit-chip.ok{color:#3fb950;border-color:rgba(63,185,80,.4)}",
+	".jxgit-chip.warn{color:#f85149;border-color:rgba(248,81,73,.4)}",
+	".jxgit-commit{margin:0 0 12px;display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--jxg-line);border-radius:8px;background:var(--jxg-soft)}",
+	".jxgit-msg{width:100%;min-height:54px;resize:vertical;font:inherit;font-size:12px;line-height:18px;padding:6px 8px;border:1px solid var(--jxg-line);border-radius:6px;background:var(--dsw-alias-bg-base,transparent);color:inherit}",
+	".jxgit-msg:focus-visible{outline:1px solid var(--jxg-accent)}",
+	".jxgit-btn{width:100%;padding:5px 10px;border-radius:6px;font:inherit;font-size:12.5px;cursor:pointer}",
+	".jxgit-btn:disabled{opacity:.55;cursor:default}",
+	".jxgit-btn-primary{background:var(--jxg-accent);border:1px solid var(--jxg-accent);color:#fff}",
+	".jxgit-btn-primary:hover:not(:disabled){filter:brightness(1.12)}",
+	".jxgit-btn-second{background:transparent;border:1px solid var(--jxg-line);color:inherit}",
+	".jxgit-btn-second:hover:not(:disabled){background:var(--jxg-hover)}",
+	".jxgit-note{font-size:11.5px;color:var(--jxg-quiet)}",
+	".jxgit-err{font-size:11.5px;color:#f85149;word-break:break-all}",
+	".jxgit-ok{font-size:11.5px;color:#3fb950;word-break:break-all}",
+	".jxgit-sec{margin:0 0 8px}",
+	".jxgit-sechead{display:flex;align-items:center;gap:6px;padding:3px 2px;user-select:none;font-size:12px;color:var(--jxg-quiet)}",
+	".jxgit-caret{width:10px;flex:none;display:inline-block;color:var(--jxg-quiet)}",
+	".jxgit-secname{letter-spacing:.3px}",
+	".jxgit-count{display:inline-block;min-width:16px;text-align:center;font-size:10.5px;line-height:14px;padding:0 4px;border-radius:99px;background:var(--jxg-soft);color:var(--jxg-quiet)}",
+	".jxgit-secaction{margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--jxg-line);border-radius:6px;background:transparent;color:var(--jxg-quiet);font-size:11px;cursor:pointer;opacity:.75}",
+	".jxgit-secaction:hover{opacity:1;background:var(--jxg-hover);color:inherit}",
+	".jxgit-secaction:disabled{opacity:.4;cursor:default}",
+	".jxgit-file{display:flex;align-items:center;gap:6px;width:100%;padding:2px 4px 2px 18px;border:none;background:transparent;color:inherit;cursor:pointer;text-align:left;border-radius:6px;font-size:12.5px}",
+	".jxgit-file:hover,.jxgit-file.open{background:var(--jxg-hover)}",
+	".jxgit-mark{flex:none;width:14px;text-align:center;font-weight:600;font-family:var(--jxg-mono);font-size:12px}",
+	".jxgit-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}",
+	".jxgit-act{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:none;border-radius:5px;background:transparent;color:var(--jxg-quiet);cursor:pointer;font-size:14px;line-height:1;opacity:0}",
+	".jxgit-file:hover .jxgit-act,.jxgit-act:focus-visible{opacity:1}",
+	".jxgit-act:hover{background:var(--jxg-accent);color:#fff}",
+	".jxgit-act:disabled{opacity:.35;cursor:default}",
+	".jxgit-detail{padding:2px 6px 10px 38px;display:flex;flex-direction:column;gap:6px}",
+	".jxgit-tl{margin-top:8px}",
+	".jxgit-tlhead{padding:4px 2px;font-size:12px;color:var(--jxg-quiet);user-select:none}",
+	".jxgit-node{position:relative;margin-left:5px;padding:0 0 0 16px;border-left:1px solid var(--jxg-line)}",
+	".jxgit-node:last-child{border-left-color:transparent}",
+	".jxgit-node::before{content:\"\";position:absolute;left:-4px;top:7px;width:7px;height:7px;border-radius:50%;background:var(--jxg-accent);box-shadow:0 0 0 2px var(--dsw-alias-bg-base,transparent)}",
+	".jxgit-node-main{padding:0 0 10px;min-width:0}",
+	".jxgit-node-title{display:flex;align-items:baseline;gap:6px;width:100%;padding:1px 2px;border:none;background:transparent;color:inherit;cursor:pointer;text-align:left;border-radius:6px;font-size:12.5px}",
+	".jxgit-node-title:hover{background:var(--jxg-hover)}",
+	".jxgit-hash{flex:none;font-family:var(--jxg-mono);font-size:11px;color:var(--jxg-accent)}",
+	".jxgit-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+	".jxgit-meta{font-size:11px;color:var(--jxg-quiet);padding:1px 2px 0}",
+	".jxgit-diff{margin:2px 0;max-height:46vh;overflow:auto;font-family:var(--jxg-mono);font-size:11.5px;line-height:17px;border-radius:6px;background:var(--jxg-soft);padding:4px 0}",
+	".jxgit-dl{padding:0 8px;white-space:pre;min-height:17px}",
+	".jxgit-dl.add{color:#3fb950;background:color-mix(in srgb,#3fb950 12%,transparent)}",
+	".jxgit-dl.del{color:#f85149;background:color-mix(in srgb,#f85149 12%,transparent)}",
+	".jxgit-dl.hunk,.jxgit-dl.meta{color:var(--jxg-quiet)}",
+	".jxgit-files{display:flex;flex-direction:column;gap:1px}",
+	".jxgit-frow{display:flex;gap:6px;font-size:12px;padding:0 2px}",
+	".jxgit-link{align-self:flex-start;padding:1px 0;border:none;background:transparent;color:var(--jxg-accent);cursor:pointer;font-size:11.5px}",
+	".jxgit-link:hover{text-decoration:underline}"
+].join("\n");
+/** 状态字母的展示（porcelain 的 '.' 与空串按修改处理，保证有标记可看）。 */
+function markOf(file, group) {
+	if (group === "untracked") return "?";
+	if (group === "conflicted") return "U";
+	const letter = group === "staged" ? file.index : file.worktree;
+	return letter === "." || letter === " " || letter === "" ? "M" : letter;
 }
-/** diff 一行的前景色与底色。 */
-function lineStyle(kind) {
-	if (kind === "add") return {
-		color: TOKENS.add,
-		background: "color-mix(in srgb, currentColor 10%, transparent)"
-	};
-	if (kind === "del") return {
-		color: TOKENS.del,
-		background: "color-mix(in srgb, currentColor 10%, transparent)"
-	};
-	if (kind === "hunk") return { color: TOKENS.hunk };
-	if (kind === "meta") return { color: TOKENS.tertiary };
-	return { color: TOKENS.text };
+/** ISO 时间 → 「MM-DD HH:mm」。 */
+function fmtTime(iso) {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return iso;
+	const pad = (value) => String(value).padStart(2, "0");
+	return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
-/** 逐行 diff 视图：只读文本节点渲染（React 自动转义，绝不用 innerHTML）。 */
+/** 逐行 diff 视图（React 文本节点渲染，自动转义）。 */
 function DiffBlock({ diff, t, note }) {
 	const [expanded, setExpanded] = (0, react.useState)(false);
 	const lines = (0, react.useMemo)(() => diff.text.split("\n").filter((line, index, all) => index < all.length - 1 || line !== ""), [diff.text]);
@@ -4276,149 +4426,87 @@ function DiffBlock({ diff, t, note }) {
 		style: {
 			display: "flex",
 			flexDirection: "column",
-			gap: "6px"
+			gap: "4px"
 		},
 		children: [
 			note !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				style: {
-					fontSize: "12px",
-					color: TOKENS.tertiary
-				},
+				className: "jxgit-note",
 				children: note
 			}),
 			diff.binary ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				style: {
-					fontSize: "12px",
-					color: TOKENS.tertiary
-				},
+				className: "jxgit-note",
 				children: t("binary")
 			}) : diff.empty ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				style: {
-					fontSize: "12px",
-					color: TOKENS.tertiary
-				},
+				className: "jxgit-note",
 				children: t("emptyDiff")
 			}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("pre", {
+				className: "jxgit-diff",
 				"data-jx-git-diff": "",
-				style: {
-					margin: 0,
-					padding: "6px 0",
-					maxHeight: "46vh",
-					overflow: "auto",
-					fontFamily: TOKENS.mono,
-					fontSize: "12px",
-					lineHeight: "18px",
-					background: "color-mix(in srgb, currentColor 4%, transparent)",
-					borderRadius: "6px"
-				},
 				children: shown.map((line, index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					style: {
-						padding: "0 8px",
-						whiteSpace: "pre",
-						...lineStyle(diffLineKind(line))
-					},
+					className: `jxgit-dl ${diffLineKind(line)}`,
 					children: line === "" ? " " : line
 				}, index))
 			}),
 			diff.truncated && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				style: {
-					fontSize: "12px",
-					color: TOKENS.tertiary
-				},
+				className: "jxgit-note",
 				children: t("truncated")
 			}),
 			lines.length > COLLAPSED_LINES && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 				type: "button",
+				className: "jxgit-link",
 				onClick: () => {
 					setExpanded((value) => !value);
 				},
-				style: linkButtonStyle,
 				children: expanded ? t("collapse") : `${t("expand")}（${String(lines.length - COLLAPSED_LINES)} 行）`
 			})
 		]
 	});
 }
-const linkButtonStyle = {
-	alignSelf: "flex-start",
-	padding: "2px 0",
-	border: "none",
-	background: "transparent",
-	color: "var(--dsw-alias-label-link, #0969da)",
-	cursor: "pointer",
-	fontSize: "12px"
-};
-const rowStyle = {
-	display: "flex",
-	alignItems: "center",
-	gap: "6px",
-	width: "100%",
-	padding: "4px 6px",
-	border: "none",
-	background: "transparent",
-	color: "inherit",
-	cursor: "pointer",
-	textAlign: "left",
-	fontSize: "13px",
-	borderRadius: "6px"
-};
-/** 分组标题（可折叠）。 */
-function SectionTitle({ label, count, open, toggle }) {
-	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-		type: "button",
-		onClick: toggle,
-		style: {
-			...rowStyle,
-			color: TOKENS.secondary,
-			fontSize: "12px",
-			letterSpacing: "0.3px"
+/** 一行改动文件：状态字母 + 路径 + 悬停出现的暂存/取消暂存按钮。 */
+function FileRow(props) {
+	const { file, group, active, busy } = props;
+	const mark = markOf(file, group);
+	const label = file.original === "" ? file.path : `${file.original} → ${file.path}`;
+	const canStage = !busy && (group === "unstaged" || group === "untracked");
+	const canUnstage = !busy && group === "staged";
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+		className: `jxgit-file${active ? " open" : ""}`,
+		"data-jx-git-file": file.path,
+		role: "button",
+		tabIndex: -1,
+		onClick: () => {
+			if (group !== "conflicted") props.onOpen(file, group);
 		},
+		title: label,
 		children: [
 			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-				style: {
-					width: "10px",
-					display: "inline-block"
-				},
-				children: open ? "▾" : "▸"
+				className: "jxgit-mark",
+				style: { color: STATUS_COLORS[mark] ?? "var(--jxg-quiet)" },
+				children: mark
 			}),
-			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: label }),
 			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-				style: { color: TOKENS.tertiary },
-				children: String(count)
+				className: "jxgit-path",
+				children: label
+			}),
+			canStage && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				className: "jxgit-act",
+				title: props.t("stageFile"),
+				onClick: (event) => {
+					event.stopPropagation();
+					props.onStage(file);
+				},
+				children: "+"
+			}),
+			canUnstage && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				className: "jxgit-act",
+				title: props.t("unstageFile"),
+				onClick: (event) => {
+					event.stopPropagation();
+					props.onUnstage(file);
+				},
+				children: "−"
 			})
 		]
-	});
-}
-/** 一个改动文件行。 */
-function FileRow({ file, staged, mark, active, onOpen, t }) {
-	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-		type: "button",
-		"data-jx-git-file": file.path,
-		onClick: () => {
-			onOpen(file, staged);
-		},
-		title: active ? t("collapse") : t("expand"),
-		style: {
-			...rowStyle,
-			background: active ? TOKENS.hover : "transparent"
-		},
-		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-			style: {
-				color: markColor(mark),
-				fontFamily: TOKENS.mono,
-				width: "22px",
-				flex: "none"
-			},
-			children: mark
-		}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-			style: {
-				overflow: "hidden",
-				textOverflow: "ellipsis",
-				whiteSpace: "nowrap",
-				direction: "rtl",
-				textAlign: "left"
-			},
-			children: file.original === "" ? file.path : `${file.original} → ${file.path}`
-		})]
 	});
 }
 /** 会话 header 上的入口按钮（自带 SVG，不依赖官方图标名）。 */
@@ -4445,8 +4533,8 @@ function GitEntryButton({ open, t }) {
 			padding: "6px",
 			border: "none",
 			borderRadius: "28px",
-			background: hover ? TOKENS.hover : "transparent",
-			color: TOKENS.secondary,
+			background: hover ? "var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.14))" : "transparent",
+			color: "var(--dsw-alias-label-secondary, #57606a)",
 			cursor: "pointer"
 		},
 		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
@@ -4495,6 +4583,11 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 	const [tick, setTick] = (0, react.useState)(0);
 	const [opened, setOpened] = (0, react.useState)(void 0);
 	const [closed, setClosed] = (0, react.useState)({});
+	const [actionBusy, setActionBusy] = (0, react.useState)("");
+	const [message, setMessage] = (0, react.useState)("");
+	const [commitBusy, setCommitBusy] = (0, react.useState)("");
+	const [commitError, setCommitError] = (0, react.useState)("");
+	const [commitNote, setCommitNote] = (0, react.useState)("");
 	const runId = (0, react.useRef)(0);
 	(0, react.useEffect)(() => {
 		const mine = ++runId.current;
@@ -4525,8 +4618,12 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 		tick,
 		visible
 	]);
-	const openFile = (0, react.useCallback)((file, staged) => {
-		const key = `${staged ? "index" : "worktree"}:${file.path}`;
+	const refresh = (0, react.useCallback)(() => {
+		setOpened(void 0);
+		setTick((value) => value + 1);
+	}, []);
+	const openFile = (0, react.useCallback)((file, group) => {
+		const key = `${group}:${file.path}`;
 		if (opened?.key === key) {
 			setOpened(void 0);
 			return;
@@ -4537,14 +4634,14 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 			phase: "loading",
 			label: file.path
 		});
-		git.diff(sessionId, status?.repo ?? "", file.path, staged).then((found) => {
+		git.diff(sessionId, status?.repo ?? "", file.path, group === "staged").then((found) => {
 			setOpened((current) => current?.key !== key ? current : found.ok ? {
 				kind: "file",
 				key,
 				phase: "ready",
 				label: file.path,
 				diff: found.value,
-				untracked: !staged && file.mark === "??"
+				untracked: group === "untracked"
 			} : {
 				kind: "file",
 				key,
@@ -4608,6 +4705,72 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 		sessionId,
 		status
 	]);
+	/** 暂存 / 取消暂存一组路径，成功后刷新状态。 */
+	const runStage = (0, react.useCallback)((mode, paths, key) => {
+		if (actionBusy !== "" || paths.length === 0) return;
+		setActionBusy(key);
+		(async () => {
+			const found = mode === "stage" ? await git.stage(sessionId, status?.repo ?? "", paths) : await git.unstage(sessionId, status?.repo ?? "", paths);
+			setActionBusy("");
+			if (!found.ok) {
+				setError(`${found.error.code}: ${found.error.message}`);
+				return;
+			}
+			setTick((value) => value + 1);
+		})().catch((reason) => {
+			setActionBusy("");
+			setError(String(reason));
+		});
+	}, [
+		actionBusy,
+		git,
+		sessionId,
+		status
+	]);
+	/** 提交：'ai' 先取摘要（回填输入框）再提交；'typed' 用输入框内容。 */
+	const runCommit = (0, react.useCallback)((mode) => {
+		if (commitBusy !== "") return;
+		if (mode === "typed" && message.trim() === "") {
+			setCommitError(t("emptyMessage"));
+			return;
+		}
+		setCommitBusy(mode);
+		setCommitError("");
+		setCommitNote("");
+		(async () => {
+			let text = message;
+			if (mode === "ai") {
+				const summary = await git.summarize(sessionId, status?.repo ?? "");
+				if (!summary.ok) {
+					setCommitBusy("");
+					setCommitError(`${t("aiFailed")}：${summary.error.message}`);
+					return;
+				}
+				text = summary.value.message;
+				setMessage(text);
+			}
+			const outcome = await git.commit(sessionId, status?.repo ?? "", text);
+			setCommitBusy("");
+			if (!outcome.ok) {
+				setCommitError(`${t("commitFailed")}：${outcome.error.message}`);
+				return;
+			}
+			setCommitNote(outcome.value.summary === "" ? t("committed") : outcome.value.summary);
+			setMessage("");
+			setOpened(void 0);
+			setTick((value) => value + 1);
+		})().catch((reason) => {
+			setCommitBusy("");
+			setCommitError(String(reason));
+		});
+	}, [
+		commitBusy,
+		git,
+		message,
+		sessionId,
+		status,
+		t
+	]);
 	const toggle = (0, react.useCallback)((name) => {
 		setClosed((current) => ({
 			...current,
@@ -4620,146 +4783,124 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 			{
 				name: "conflicted",
 				label: t("conflicted"),
-				files: status.conflicted,
-				mark: (file) => file.index === "U" ? "U" : file.index
+				files: status.conflicted
 			},
 			{
 				name: "staged",
 				label: t("staged"),
-				files: status.staged,
-				mark: (file) => file.index
+				files: status.staged
 			},
 			{
 				name: "unstaged",
 				label: t("unstaged"),
-				files: status.unstaged,
-				mark: (file) => file.worktree
+				files: status.unstaged
 			},
 			{
 				name: "untracked",
 				label: t("untracked"),
-				files: status.untracked,
-				mark: () => "??"
+				files: status.untracked
 			}
 		].filter((group) => group.files.length > 0);
 	}, [status, t]);
 	const changed = status === void 0 ? 0 : status.staged.length + status.unstaged.length + status.untracked.length + status.conflicted.length;
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+		className: "jxgit",
 		"data-jx-git-panel": "",
-		style: {
-			display: "flex",
-			flexDirection: "column",
-			height: "100%",
-			minHeight: 0,
-			fontSize: "13px",
-			color: TOKENS.text
-		},
 		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-			style: {
-				display: "flex",
-				alignItems: "center",
-				gap: "6px",
-				padding: "6px 8px",
-				borderBottom: `0.5px solid ${TOKENS.border}`,
-				flex: "none"
-			},
+			className: "jxgit-head",
 			children: [
 				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					style: {
-						fontWeight: 500,
-						flex: "none"
-					},
+					className: "jxgit-title",
 					children: t("tab")
 				}),
-				status !== void 0 && status.repo !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				status !== void 0 && status.repo !== "" && status.repos.length > 1 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
+					className: "jxgit-repo",
+					"data-jx-git-repo": "",
+					value: status.repo,
+					onChange: (event) => {
+						setOpened(void 0);
+						setRepo(event.target.value);
+					},
+					children: status.repos.map((candidate) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
+						value: candidate.path,
+						children: candidate.name
+					}, candidate.path))
+				}),
+				status !== void 0 && status.repo !== "" && status.repos.length <= 1 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					className: "jxgit-note",
 					style: {
-						color: TOKENS.tertiary,
+						flex: 1,
 						overflow: "hidden",
 						textOverflow: "ellipsis",
-						whiteSpace: "nowrap",
-						flex: 1
+						whiteSpace: "nowrap"
 					},
-					children: [
-						status.repo,
-						status.branch === "" ? ` · ${t("detached")}` : ` · ${status.branch}`,
-						status.upstream === "" ? "" : ` · ↑${String(status.ahead)} ↓${String(status.behind)}`
-					]
+					children: status.repos[0]?.name ?? status.repo
 				}),
 				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 					type: "button",
-					onClick: () => {
-						setTick((value) => value + 1);
-					},
+					className: "jxgit-iconbtn",
+					onClick: refresh,
 					disabled: busy,
-					style: {
-						...linkButtonStyle,
-						color: TOKENS.secondary,
-						flex: "none"
-					},
-					children: busy ? t("loading") : t("refresh")
+					title: t("refresh"),
+					"aria-label": t("refresh"),
+					children: "⟳"
 				}),
 				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 					type: "button",
+					className: "jxgit-iconbtn",
 					onClick: () => {
 						info.tab.actions.close();
 					},
-					style: {
-						...linkButtonStyle,
-						color: TOKENS.secondary,
-						flex: "none"
-					},
-					children: t("close")
+					title: t("close"),
+					"aria-label": t("close"),
+					children: "✕"
 				})
 			]
 		}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-			style: {
-				flex: 1,
-				minHeight: 0,
-				overflowY: "auto",
-				padding: "6px 8px 16px"
-			},
+			className: "jxgit-body",
 			children: [
 				error !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 					style: {
-						color: TOKENS.del,
 						display: "flex",
 						flexDirection: "column",
-						gap: "6px"
+						gap: "6px",
+						marginBottom: "8px"
 					},
 					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: t("failed") }),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							style: {
-								wordBreak: "break-all",
-								color: TOKENS.secondary
-							},
+							className: "jxgit-err",
+							children: t("failed")
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+							className: "jxgit-err",
 							children: error
 						}),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
-							onClick: () => {
-								setTick((value) => value + 1);
-							},
-							style: linkButtonStyle,
+							className: "jxgit-link",
+							onClick: refresh,
 							children: t("retry")
 						})
 					]
 				}),
 				error === "" && status !== void 0 && status.repo === "" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 					style: {
-						color: TOKENS.secondary,
 						display: "flex",
 						flexDirection: "column",
 						gap: "6px"
 					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: t("noRepo") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						style: {
-							wordBreak: "break-all",
-							fontSize: "12px",
-							color: TOKENS.tertiary
-						},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: "jxgit-note",
+						children: t("noRepo")
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: "jxgit-note",
+						style: { wordBreak: "break-all" },
 						children: status.reason
 					})]
+				}),
+				error === "" && status === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+					className: "jxgit-note",
+					children: t("loading")
 				}),
 				error === "" && status !== void 0 && status.repo !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 					style: {
@@ -4768,293 +4909,296 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 						gap: "8px"
 					},
 					children: [
-						status.repos.length > 1 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
-							style: {
-								display: "flex",
-								alignItems: "center",
-								gap: "6px",
-								fontSize: "12px",
-								color: TOKENS.secondary
-							},
-							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("repo") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
-								"data-jx-git-repo": "",
-								value: status.repo,
-								onChange: (event) => {
-									setOpened(void 0);
-									setRepo(event.target.value);
-								},
-								style: {
-									flex: 1,
-									minWidth: 0,
-									padding: "2px 4px",
-									fontSize: "12px",
-									color: TOKENS.text,
-									background: TOKENS.surface,
-									border: `0.5px solid ${TOKENS.border}`,
-									borderRadius: "6px"
-								},
-								children: status.repos.map((candidate) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("option", {
-									value: candidate.path,
-									children: [
-										candidate.name,
-										"（",
-										candidate.path,
-										"）"
-									]
-								}, candidate.path))
-							})]
-						}),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-							style: {
-								display: "flex",
-								flexWrap: "wrap",
-								gap: "6px",
-								fontSize: "12px",
-								color: TOKENS.secondary
-							},
+							className: "jxgit-bar",
 							children: [
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: status.branch === "" ? t("detached") : status.branch }),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: "·" }),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: status.upstream === "" ? t("upstreamNone") : `${status.upstream} ↑${String(status.ahead)} ↓${String(status.behind)}` }),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: "·" }),
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									style: { color: changed === 0 ? TOKENS.add : TOKENS.del },
-									children: changed === 0 ? t("clean") : `${t("dirty")}（${String(changed)}）`
+									className: "jxgit-chip",
+									children: status.branch === "" ? t("detached") : status.branch
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									className: "jxgit-chip",
+									children: status.upstream === "" ? t("upstreamNone") : `↑${String(status.ahead)} ↓${String(status.behind)} ${status.upstream}`
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									className: `jxgit-chip${changed === 0 ? " ok" : " warn"}`,
+									children: changed === 0 ? t("clean") : `${t("dirty")} ${String(changed)}`
 								})
 							]
 						}),
-						changed === 0 && status.staged.length + status.unstaged.length + status.untracked.length + status.conflicted.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							style: {
-								fontSize: "12px",
-								color: TOKENS.tertiary
-							},
-							children: t("clean")
-						}),
-						groups.map((group) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-							style: {
-								display: "flex",
-								flexDirection: "column"
-							},
-							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SectionTitle, {
-								label: group.label,
-								count: group.files.length,
-								open: closed[group.name] !== true,
-								toggle: () => {
-									toggle(group.name);
-								}
-							}), closed[group.name] !== true && group.files.map((file) => {
-								const staged = group.name === "staged";
-								const key = `${staged ? "index" : "worktree"}:${file.path}`;
-								return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-									style: {
-										display: "flex",
-										flexDirection: "column"
-									},
-									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FileRow, {
-										file,
-										staged,
-										mark: group.mark(file),
-										active: opened?.key === key,
-										onOpen: openFile,
-										t
-									}), opened?.key === key && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-										style: { padding: "4px 6px 10px 28px" },
-										children: [
-											opened.phase === "loading" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-												style: {
-													fontSize: "12px",
-													color: TOKENS.tertiary
-												},
-												children: t("loadingDiff")
-											}),
-											opened.phase === "error" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-												style: {
-													fontSize: "12px",
-													color: TOKENS.del,
-													wordBreak: "break-all"
-												},
-												children: opened.error
-											}),
-											opened.phase === "ready" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DiffBlock, {
-												diff: opened.diff,
-												t,
-												note: opened.untracked && !opened.diff.empty ? t("untrackedContent") : void 0
-											})
-										]
-									})]
-								}, `${group.name}:${file.path}`);
-							})]
-						}, group.name)),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-							style: {
-								display: "flex",
-								flexDirection: "column",
-								marginTop: "4px",
-								borderTop: `0.5px solid ${TOKENS.border}`,
-								paddingTop: "6px"
-							},
-							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(SectionTitle, {
-								label: t("history"),
-								count: history?.commits.length ?? 0,
-								open: closed.history !== true,
-								toggle: () => {
-									toggle("history");
-								}
+							className: "jxgit-commit",
+							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("textarea", {
+									className: "jxgit-msg",
+									value: message,
+									placeholder: t("messagePlaceholder"),
+									rows: 3,
+									onChange: (event) => {
+										setMessage(event.target.value);
+										setCommitError("");
+										setCommitNote("");
+									}
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: "jxgit-btn jxgit-btn-primary",
+									disabled: commitBusy !== "",
+									onClick: () => {
+										runCommit("ai");
+									},
+									children: commitBusy === "ai" ? t("generating") : t("aiCommit")
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: "jxgit-btn jxgit-btn-second",
+									disabled: commitBusy !== "",
+									onClick: () => {
+										runCommit("typed");
+									},
+									children: commitBusy === "typed" ? t("committing") : t("typedCommit")
+								}),
+								commitError !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "jxgit-err",
+									children: commitError
+								}),
+								commitNote !== "" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "jxgit-ok",
+									children: commitNote
+								})
+							]
+						}),
+						groups.map((group) => {
+							const open = closed[group.name] !== true;
+							const stageAll = group.name === "unstaged" || group.name === "untracked";
+							const allPaths = group.files.map((file) => file.path);
+							return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: "jxgit-sec",
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: "jxgit-sechead",
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: "jxgit-file",
+											style: {
+												padding: "2px 0 2px 2px",
+												flex: "none",
+												width: "auto"
+											},
+											role: "button",
+											tabIndex: -1,
+											onClick: () => {
+												toggle(group.name);
+											},
+											"aria-expanded": open,
+											children: [
+												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													className: "jxgit-caret",
+													children: open ? "▾" : "▸"
+												}),
+												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													className: "jxgit-secname",
+													children: group.label
+												}),
+												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													className: "jxgit-count",
+													children: String(group.files.length)
+												})
+											]
+										}),
+										group.name === "staged" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+											type: "button",
+											className: "jxgit-secaction",
+											disabled: actionBusy !== "",
+											onClick: () => {
+												runStage("unstage", allPaths, `all:${group.name}`);
+											},
+											title: t("unstageAll"),
+											children: actionBusy === `all:${group.name}` ? t("stageBusy") : `− ${t("unstageAll")}`
+										}),
+										stageAll && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+											type: "button",
+											className: "jxgit-secaction",
+											disabled: actionBusy !== "",
+											onClick: () => {
+												runStage("stage", allPaths, `all:${group.name}`);
+											},
+											title: t("stageAll"),
+											children: actionBusy === `all:${group.name}` ? t("stageBusy") : `+ ${t("stageAll")}`
+										})
+									]
+								}), open && group.files.map((file) => {
+									const key = `${group.name}:${file.path}`;
+									return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+										style: {
+											display: "flex",
+											flexDirection: "column"
+										},
+										children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(FileRow, {
+											file,
+											group: group.name,
+											active: opened?.key === key,
+											busy: actionBusy !== "",
+											onOpen: openFile,
+											onStage: (target) => {
+												runStage("stage", [target.path], `file:${target.path}`);
+											},
+											onUnstage: (target) => {
+												runStage("unstage", [target.path], `file:${target.path}`);
+											},
+											t
+										}), opened?.key === key && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: "jxgit-detail",
+											children: [
+												opened.phase === "loading" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+													className: "jxgit-note",
+													children: t("loadingDiff")
+												}),
+												opened.phase === "error" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+													className: "jxgit-err",
+													children: opened.error
+												}),
+												opened.phase === "ready" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DiffBlock, {
+													diff: opened.diff,
+													t,
+													note: opened.untracked && !opened.diff.empty ? t("untrackedContent") : void 0
+												})
+											]
+										})]
+									}, key);
+								})]
+							}, group.name);
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							className: "jxgit-tl",
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: "jxgit-tlhead",
+								children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: "jxgit-file",
+									style: {
+										padding: "2px 0",
+										flex: "none",
+										width: "auto"
+									},
+									role: "button",
+									tabIndex: -1,
+									onClick: () => {
+										toggle("history");
+									},
+									"aria-expanded": closed.history !== true,
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+											className: "jxgit-caret",
+											children: closed.history !== true ? "▾" : "▸"
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+											className: "jxgit-secname",
+											children: t("history")
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+											className: "jxgit-count",
+											children: String(history?.commits.length ?? 0)
+										})
+									]
+								})
 							}), closed.history !== true && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 								history !== void 0 && history.empty && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-									style: {
-										fontSize: "12px",
-										color: TOKENS.tertiary,
-										padding: "2px 6px"
-									},
+									className: "jxgit-note",
+									style: { padding: "2px 4px" },
 									children: t("emptyRepo")
 								}),
-								(history?.commits ?? []).map((commit) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-									style: {
-										display: "flex",
-										flexDirection: "column"
-									},
-									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-										type: "button",
-										"data-jx-git-commit": commit.short,
-										onClick: () => {
-											openCommit(commit);
-										},
-										style: {
-											...rowStyle,
-											background: opened?.key === `commit:${commit.hash}` ? TOKENS.hover : "transparent",
-											alignItems: "baseline"
-										},
+								(history?.commits ?? []).map((commit) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+									className: "jxgit-node",
+									children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+										className: "jxgit-node-main",
 										children: [
-											/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-												style: {
-													fontFamily: TOKENS.mono,
-													color: TOKENS.tertiary,
-													flex: "none"
+											/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+												type: "button",
+												className: "jxgit-node-title",
+												"data-jx-git-commit": commit.short,
+												onClick: () => {
+													openCommit(commit);
 												},
-												children: commit.short
+												children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													className: "jxgit-hash",
+													children: commit.short
+												}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+													className: "jxgit-sub",
+													children: commit.subject
+												})]
 											}),
-											/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-												style: {
-													overflow: "hidden",
-													textOverflow: "ellipsis",
-													whiteSpace: "nowrap",
-													flex: 1
-												},
-												children: commit.subject
+											/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+												className: "jxgit-meta",
+												children: [
+													commit.author,
+													" · ",
+													fmtTime(commit.time)
+												]
 											}),
-											/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-												style: {
-													color: TOKENS.tertiary,
-													fontSize: "12px",
-													flex: "none"
-												},
-												children: commit.author
+											opened?.key === `commit:${commit.hash}` && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+												className: "jxgit-detail",
+												style: { paddingLeft: "2px" },
+												children: [
+													opened.phase === "loading" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+														className: "jxgit-note",
+														children: t("loadingDiff")
+													}),
+													opened.phase === "error" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+														className: "jxgit-err",
+														children: opened.error
+													}),
+													opened.phase === "ready" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+														/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+															className: "jxgit-note",
+															children: [
+																t("filesChanged"),
+																"（",
+																String(opened.commit.files.length),
+																"）"
+															]
+														}),
+														/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+															className: "jxgit-files",
+															children: opened.commit.files.map((file) => {
+																const mark = file.index === "." || file.index === "" ? "M" : file.index;
+																return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+																	className: "jxgit-frow",
+																	children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																		className: "jxgit-mark",
+																		style: { color: STATUS_COLORS[mark] ?? "var(--jxg-quiet)" },
+																		children: mark
+																	}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+																		style: {
+																			overflow: "hidden",
+																			textOverflow: "ellipsis",
+																			whiteSpace: "nowrap"
+																		},
+																		children: file.original === "" ? file.path : `${file.original} → ${file.path}`
+																	})]
+																}, `${file.index}:${file.path}`);
+															})
+														}),
+														/* @__PURE__ */ (0, react_jsx_runtime.jsx)(DiffBlock, {
+															diff: opened.commit.diff,
+															t
+														})
+													] })
+												]
 											})
 										]
-									}), opened?.key === `commit:${commit.hash}` && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-										style: {
-											padding: "4px 6px 10px 28px",
-											display: "flex",
-											flexDirection: "column",
-											gap: "6px"
-										},
-										children: [
-											/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-												style: {
-													fontSize: "12px",
-													color: TOKENS.tertiary
-												},
-												children: commit.time
-											}),
-											opened.phase === "loading" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-												style: {
-													fontSize: "12px",
-													color: TOKENS.tertiary
-												},
-												children: t("loadingDiff")
-											}),
-											opened.phase === "error" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-												style: {
-													fontSize: "12px",
-													color: TOKENS.del,
-													wordBreak: "break-all"
-												},
-												children: opened.error
-											}),
-											opened.phase === "ready" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-												/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-													style: {
-														fontSize: "12px",
-														color: TOKENS.secondary
-													},
-													children: [
-														t("filesChanged"),
-														"（",
-														String(opened.commit.files.length),
-														"）"
-													]
-												}),
-												/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-													style: {
-														display: "flex",
-														flexDirection: "column"
-													},
-													children: opened.commit.files.map((file) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-														style: {
-															display: "flex",
-															gap: "6px",
-															fontSize: "12px",
-															padding: "1px 0"
-														},
-														children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															style: {
-																color: markColor(file.index),
-																fontFamily: TOKENS.mono,
-																width: "22px",
-																flex: "none"
-															},
-															children: file.index
-														}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-															style: {
-																overflow: "hidden",
-																textOverflow: "ellipsis",
-																whiteSpace: "nowrap"
-															},
-															children: file.original === "" ? file.path : `${file.original} → ${file.path}`
-														})]
-													}, `${file.index}:${file.path}`))
-												}),
-												/* @__PURE__ */ (0, react_jsx_runtime.jsx)(DiffBlock, {
-													diff: opened.commit.diff,
-													t
-												})
-											] })
-										]
-									})]
+									})
 								}, commit.hash)),
 								history !== void 0 && history.more && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-									style: {
-										fontSize: "12px",
-										color: TOKENS.tertiary,
-										padding: "2px 6px"
-									},
+									className: "jxgit-note",
+									style: { padding: "2px 4px" },
 									children: t("more")
 								})
 							] })]
 						}),
 						status.truncated && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-							style: {
-								fontSize: "12px",
-								color: TOKENS.tertiary
-							},
+							className: "jxgit-note",
 							children: t("truncated")
 						})
 					]
-				}),
-				error === "" && status === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					style: { color: TOKENS.tertiary },
-					children: t("loading")
 				})
 			]
 		})]
@@ -5062,9 +5206,16 @@ function GitPanel({ sessionId, useTabInfo, git, t }) {
 }
 /** 顶层插件先挂 jxGit Remote 命名空间（服务由 $mount 产生，不能写进顶层 inject）。 */
 const inject = ["remote"];
-/** 挂载 Remote、注册标签页类型与正文、装上会话 header 入口按钮。 */
+/** 挂载 Remote、注册标签页类型与正文、装上样式表与会话 header 入口按钮。 */
 async function apply(ctx) {
 	const disposeMount = await ctx.remote.$mount(TYPERT_REMOTE);
+	let style = document.getElementById(STYLE_ID);
+	if (style === null) {
+		style = document.createElement("style");
+		style.id = STYLE_ID;
+		style.textContent = JXGIT_CSS;
+		document.head.append(style);
+	}
 	const disposeUi = ctx.plugin({
 		name: "dsh-git-panel/ui",
 		inject: [
@@ -5114,6 +5265,7 @@ async function apply(ctx) {
 	return async () => {
 		await disposeUi();
 		await disposeMount();
+		style?.remove();
 	};
 }
 //#endregion

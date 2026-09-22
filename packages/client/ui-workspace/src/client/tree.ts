@@ -158,10 +158,13 @@ export function orderByRecency(
 
 /**
  * Reconcile a browser-local manual order with current account membership.
+ * Newly known members (an ordinary fork is never blank, so it arrives here
+ * rather than through blank pinning) lead by recency — the slot a new
+ * conversation takes — instead of trailing the group.
  * @param memberIds - authoritative account membership.
  * @param savedOrder - previously saved browser-local order.
- * @param summaries - current Session summaries used to append newly known members by recency.
- * @returns retained saved slots followed by newly known members; departed members and unknown new members are omitted.
+ * @param summaries - current Session summaries used to place newly known members by recency.
+ * @returns newly known members by recency followed by retained saved slots; departed members and unknown new members are omitted.
  */
 export function reconcileManualOrder(
   memberIds: readonly SessionId[],
@@ -170,19 +173,15 @@ export function reconcileManualOrder(
 ): SessionId[] {
   const members = new Map(memberIds.map(id => [id as string, id]))
   const included = new Set<string>()
-  const ordered: SessionId[] = []
+  const saved: SessionId[] = []
   for (const key of savedOrder ?? []) {
     const id = members.get(key)
     if (id === undefined || included.has(key)) continue
-    ordered.push(id)
+    saved.push(id)
     included.add(key)
   }
-  for (const id of orderByRecency(memberIds, summaries)) {
-    if (included.has(id)) continue
-    ordered.push(id)
-    included.add(id)
-  }
-  return ordered
+  const newcomers = orderByRecency(memberIds, summaries).filter(id => !included.has(id))
+  return [...newcomers, ...saved]
 }
 
 /**
@@ -205,10 +204,32 @@ export function pinCurrentBlank(
  * sessions are visible nowhere, while their accounting slots remain so
  * unarchiving restores position.
  */
+/**
+ * 坚祥数字助理的主对话：只从侧边栏左上角的「数字助理」入口进入，
+ * 不占用户工作区的会话列表（那条列表属于用户自己的工作）。
+ * 会话 id 由模组 `dsh-digital-assistant` 固定；见《修改记录》条目 74。
+ *
+ * 这里不能用归档来实现同样效果：`clearArchivedCurrent()` 会在每次列表快照
+ * 变化时清空「当前打开但已归档」的会话，数字助理自己说话就会把用户踢出去。
+ */
+const JX_ASSISTANT_SESSION_ID = 'session-jx-assistant'
+
 function sessionVisible(session: SessionSummary, current: SessionId | undefined, archived: ReadonlySet<SessionId>): boolean {
   return session.origin !== 'subagent'
     && !archived.has(session.id)
+    && session.id !== JX_ASSISTANT_SESSION_ID
     && (!session.blank || session.id === current)
+}
+
+/**
+ * 装载着数字助理会话的工作区（就是它的落脚工作区）整体不显示：
+ * 数字助理对用户只存在于侧边栏「新建会话」下面那一行入口，工作区分组与会话行都不出现。
+ * 宿主侧仍然把它挂在这个工作区里——不挂的话客户端 `openSession` 会静默失败。
+ * @param workspace - one workspace view.
+ * @returns whether this workspace is the digital assistant's home.
+ */
+function isAssistantHomeWorkspace(workspace: WorkspaceView): boolean {
+  return workspace.sessionIds.includes(JX_ASSISTANT_SESSION_ID)
 }
 
 /**
@@ -237,7 +258,7 @@ function buildGroup(
   return { key, workspaceId, cwd, createdAt, label, sessions: [...members] }
 }
 
-/** Apply a stored Ungrouped order and append newly loose Sessions by recency. */
+/** Apply a stored Ungrouped order and lead newly loose Sessions by recency. */
 function orderedUngrouped(
   members: readonly SessionSummary[],
   stored: readonly string[] | undefined,
@@ -270,6 +291,11 @@ function groupByWorkspace(
   const groups: Group[] = []
   const accounted = new Set<SessionId>()
   for (const workspace of workspaces) {
+    // 数字助理的落脚工作区整体不显示；记账照做，免得它的会话被当成 stray 落到「未分组」。
+    if (isAssistantHomeWorkspace(workspace)) {
+      for (const id of workspace.sessionIds) accounted.add(id)
+      continue
+    }
     const members: SessionSummary[] = []
     for (const id of workspace.sessionIds) {
       const summary = list.byId[id]

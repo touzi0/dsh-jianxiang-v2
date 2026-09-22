@@ -41,13 +41,21 @@ export interface JxSearchPage {
 }
 
 export class JxSearchGateway extends TypertRemoteService {
-  static inject = ['sessionQuery']
+  static inject = ['sessionQuery', 'workspaceRegistry']
 
   private snapshot: { query: string, ids: string[], at: number } | undefined
 
   constructor(ctx: Context) {
     super(ctx, 'jxSearch')
     void ctx
+  }
+
+  /** 宿主 workspaceRegistry 的归档集合（registry 不可用时视为无归档）。 */
+  private archivedSessionIds(): string[] {
+    const registry = (this.ctx as unknown as {
+      workspaceRegistry?: { archivedSessionIds?: readonly string[] }
+    }).workspaceRegistry
+    return registry === undefined ? [] : [...registry.archivedSessionIds ?? []]
   }
 
   /**
@@ -63,9 +71,12 @@ export class JxSearchGateway extends TypertRemoteService {
     if (this.snapshot === undefined || this.snapshot.query !== needle || Date.now() - this.snapshot.at > SNAPSHOT_TTL_MS) {
       const records = await sessionQuery.listSessions()
       // 镜像官方搜索的可见性授权：只扫有 cwd 的会话；官方 listSessions 已按最新在前排序。
+      // 归档会话（官方侧栏本来就隐藏）不进扫描列表，与 ui-workspace 的行可见性口径一致。
+      const archived = new Set(this.archivedSessionIds())
       this.snapshot = {
         query: needle,
-        ids: sessionScanOrder(records.map(record => ({ id: record.header.id, cwd: record.header.cwd }))),
+        ids: sessionScanOrder(records.map(record => ({ id: record.header.id, cwd: record.header.cwd })))
+          .filter(id => !archived.has(id)),
         at: Date.now(),
       }
     }
