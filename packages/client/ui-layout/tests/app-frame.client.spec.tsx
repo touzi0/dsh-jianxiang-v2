@@ -30,6 +30,8 @@ class ResizeObserverStub {
 }
 
 let frameWidth: number
+/** Right edge reported by the conversation's content column; null = no column measured. */
+let contentRight: number | null
 let animationFrames: Map<number, FrameRequestCallback>
 let nextFrame: number
 let originalTitle: string
@@ -60,12 +62,21 @@ function resize(width: number): void {
   })
 }
 
-function mountFrame(windowWidth = frameWidth) {
+function mountFrame(windowWidth = frameWidth, withConversation = false) {
   vi.stubGlobal('innerWidth', windowWidth)
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: object; options: RenderOpts | undefined }[] = []
   const renderSlot: AppFrameProps['renderSlot'] = (key, owner, options) => {
     slotCalls.push({ key, props: owner, options })
+    if (withConversation && key === 'main') {
+      return (
+        <div data-testid={`${key}-content`} data-entry-key={options?.entryKey}>
+          <div data-conversation-content="">
+            <div data-chat-flow="" />
+          </div>
+        </div>
+      )
+    }
     return <div data-testid={`${key}-content`} data-entry-key={options?.entryKey} />
   }
   const useSessions: AppFrameProps['useSessions'] = sel => sel({
@@ -139,6 +150,7 @@ function drag(handle: Element, fromX: number, toX: number): void {
 beforeEach(() => {
   originalTitle = document.title
   frameWidth = 1920
+  contentRight = null
   selectedSession = 's-test' as SessionId
   selectedSessionTitle = undefined
   workspacesReady = true
@@ -153,10 +165,15 @@ beforeEach(() => {
     return id
   })
   vi.stubGlobal('cancelAnimationFrame', (id: number) => { animationFrames.delete(id) })
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({
-    width: frameWidth, height: 1080, top: 0, left: 0, right: frameWidth, bottom: 1080,
-    x: 0, y: 0, toJSON: () => ({}),
-  }))
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    // The conversation's message column reports its own content edge; every
+    // other element (the frame included) reports the frame box.
+    const right = this.hasAttribute('data-chat-flow') && contentRight !== null ? contentRight : frameWidth
+    return {
+      width: right, height: 1080, top: 0, left: 0, right, bottom: 1080,
+      x: 0, y: 0, toJSON: () => ({}),
+    }
+  })
   // jsdom has no pointer capture. Each element retains the actual pointer id,
   // and teardown restores absent methods as well as existing descriptors.
   const captured = new WeakMap<Element, number>()
@@ -262,15 +279,18 @@ describe('AppFrame', () => {
 })
 
 describe('AppFrame normal width concessions', () => {
-  it('measures the frame, not the window, before choosing the first-open preference', () => {
+  it('measures the frame, not the window, before choosing the ratio fallback', () => {
     frameWidth = 1000
     const { instance, rightOwner } = mountFrame(1920)
     expect(instance.getSnapshot().layoutInfo.viewportWidth).toBe(1000)
     expect(rightOwner()).toEqual({ width: 450, viewportWidth: 1000, canShow: true })
     act(() => { instance.actions.openRightbar(true, false) })
-    expect(instance.getSnapshot().layoutInfo.rightbar).toBe(450)
+    // No centre occupant publishes a content column, so the frame keeps the
+    // ratio fallback and never writes a width preference.
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
     resize(1920)
-    expect(rightOwner().width).toBe(450)
+    // Derived, so it follows the frame rather than a first-open snapshot.
+    expect(rightOwner().width).toBe(864)
   })
 
   it('shrinks the right panel to 300px, drops its track, and only then squeezes center', () => {
@@ -285,7 +305,7 @@ describe('AppFrame normal width concessions', () => {
     expect(tracks(frame)).toEqual([420, 0])
     expect(rightOwner()).toEqual({ width: 0, viewportWidth: 1119, canShow: false })
     expect(frame.querySelector('[data-side="rightbar"]')).toBeNull()
-    expect(instance.getSnapshot().layoutInfo).toMatchObject({ rightbarShown: true, rightbar: 864 })
+    expect(instance.getSnapshot().layoutInfo).toMatchObject({ rightbarShown: true, rightbar: null })
     act(() => { instance.actions.closeRightbar() })
     resize(455)
     expect(tracks(frame)).toEqual([56, 0])
@@ -301,7 +321,7 @@ describe('AppFrame normal width concessions', () => {
     expect(rightOwner()).toEqual({ width: 344, viewportWidth: 800, canShow: true })
     act(() => { instance.actions.openRightbar(true, false) })
     expect(tracks(frame)).toEqual([56, 344])
-    expect(instance.getSnapshot().layoutInfo).toMatchObject({ narrowExpanded: false, rightbar: 360 })
+    expect(instance.getSnapshot().layoutInfo).toMatchObject({ narrowExpanded: false, rightbar: null })
     expect(rightOwner().canShow).toBe(true)
   })
 
@@ -556,10 +576,73 @@ describe('AppFrame pointer resizing', () => {
     const settled = instance.getSnapshot()
     act(flushFrames)
     expect(instance.getSnapshot()).toBe(settled)
-    expect(instance.getSnapshot().layoutInfo.rightbar).toBe(864)
+    // The cancelled gesture wrote no preference: the width stays derived.
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
     expect(animationFrames.size).toBe(0)
     expect(handle.hasPointerCapture(1)).toBe(false)
     if (change !== 'unmount') expect(frame.dataset.dragging).toBeUndefined()
+  })
+})
+
+describe('AppFrame derived right panel width', () => {
+  it('fills the space the conversation leaves without reserving a track', () => {
+    contentRight = 1200
+    const { frame, instance, rightOwner } = mountFrame(1920, true)
+    act(() => { instance.actions.openRightbar(true, false) })
+    // 1920 − 1200 − the 24px gutter: the panel starts at the content edge.
+    expect(rightOwner().width).toBe(696)
+    // No track: the conversation column keeps the width it had before opening.
+    expect(tracks(frame)).toEqual([280, 0])
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
+  })
+
+  it('recomputes the derived width when the frame resizes', () => {
+    contentRight = 1200
+    const { frame, instance, rightOwner } = mountFrame(1920, true)
+    act(() => { instance.actions.openRightbar(true, false) })
+    contentRight = 1800
+    resize(2560)
+    expect(rightOwner()).toEqual({ width: 736, viewportWidth: 2560, canShow: true })
+    expect(tracks(frame)).toEqual([280, 0])
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
+  })
+
+  it('falls back to the ratio default and concedes a track when the space is too narrow', () => {
+    contentRight = 1800
+    const { frame, instance, rightOwner } = mountFrame(1920, true)
+    act(() => { instance.actions.openRightbar(true, false) })
+    // 1920 − 1800 − 24 = 96px, below the 300px panel minimum.
+    expect(rightOwner()).toEqual({ width: 864, viewportWidth: 1920, canShow: true })
+    expect(tracks(frame)).toEqual([280, 864])
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
+  })
+
+  it('never derives a width from a measurement taken while a track is reserved', () => {
+    // Narrow frame: the ratio fallback opens WITH a track and no preference.
+    contentRight = 1800
+    const { frame, instance, rightOwner } = mountFrame(1920, true)
+    act(() => { instance.actions.openRightbar(true, false) })
+    expect(rightOwner().width).toBe(864)
+    expect(tracks(frame)).toEqual([280, 864])
+    // The track squeezes the conversation, so a measurement taken now reports
+    // space the track itself made room for. Publishing it would swap the panel
+    // to a derived width wider than the gap and leave it floating over the
+    // conversation — the reported defect.
+    contentRight = 1200
+    resize(1920)
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(rightOwner().width).toBe(864)
+    expect(tracks(frame)).toEqual([280, 864])
+  })
+
+  it('prefers a dragged width over the derived one and keeps its track', () => {
+    contentRight = 1200
+    const { frame, instance, rightOwner } = mountFrame(1920, true)
+    act(() => { instance.actions.openRightbar(true, false) })
+    drag(handleFor(frame, 'rightbar'), 1224, 1100)
+    expect(instance.getSnapshot().layoutInfo.rightbar).toBe(820)
+    expect(rightOwner().width).toBe(820)
+    expect(tracks(frame)).toEqual([280, 820])
   })
 })
 

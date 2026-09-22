@@ -5,7 +5,7 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { MainPanelId } from './service.ts'
 import {
-  clampWidth, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN,
+  clampWidth, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN,
   SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
@@ -27,8 +27,11 @@ type LayoutInfo = {
   viewportWidth: number
   narrowExpanded: boolean
   /**
-   * Saved right panel width in px, or null before its first opening. Resizing
-   * the frame and closing the panel preserve this preference.
+   * User-dragged right panel width in px, or null while nobody has dragged the
+   * handle. A null preference means the frame derives the width from the space
+   * the conversation leaves on every measurement, so opening or resizing never
+   * moves the conversation; a dragged width is a preference and reserves a
+   * track. Closing the panel preserves either.
    */
   rightbar: number | null
   /**
@@ -69,10 +72,11 @@ type LayoutActions = {
 /**
  * Create the layout panel store handle. For the sidebar the preference IS the
  * width, so closing it forgets its drag width — reopening restores the contract
- * default. The right panel initializes at 45% of the frame on first opening
- * and keeps that px preference across resizes and close. Drag writes clamp to
- * the current frame's range. Narrow sidebar toggles change only the expansion
- * override; opening the right panel clears that override.
+ * default. The right panel holds no preference until the user drags its handle:
+ * the frame derives the first-open width from the space the conversation leaves
+ * (AppFrame), which keeps that width live across resizes and re-openings. Drag
+ * writes clamp to the current frame's range. Narrow sidebar toggles change only
+ * the expansion override; opening the right panel clears that override.
  * @returns the store handle (spec + type + identity + factory in one).
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
@@ -129,7 +133,6 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
           d.layoutInfo.rightbarInstant = d.layoutInfo.rightbarFullscreen && !fullscreen
         }
         if (!d.layoutInfo.rightbarShown && d.layoutInfo.viewportWidth < SIDEBAR_AUTO_COLLAPSE) d.layoutInfo.narrowExpanded = false
-        d.layoutInfo.rightbar ??= Math.max(RIGHTBAR_MIN, Math.round(d.layoutInfo.viewportWidth * RIGHTBAR_DEFAULT_RATIO))
         d.layoutInfo.rightbarShown = true
         d.layoutInfo.rightbarTrack = track
         d.layoutInfo.rightbarFullscreen = fullscreen

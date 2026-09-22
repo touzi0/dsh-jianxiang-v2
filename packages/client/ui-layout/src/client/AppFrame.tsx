@@ -13,13 +13,24 @@
  * shown/track/fullscreen through `ctx.layout`; fullscreen keeps the reported
  * track but hides the outer resize handle. Everything arrives through the framework
  * shares — zero cordis or framework imports, zero self-made hooks.
+ *
+ * The panel's first-open width is measured off the centre occupant instead of
+ * being a ratio of the frame: it is the space between the conversation's content
+ * column and the frame's right edge, taken with no track, so opening the panel
+ * leaves the conversation at its width and in place. Only when that space is
+ * narrower than the panel's minimum (a frame too narrow to hold both) does the
+ * ratio default return and concede a track. A width the user dragged is a
+ * preference and always reserves its track.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import { computeColumns, RIGHTBAR_DEFAULT_RATIO, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from './columns.ts'
+import {
+  computeColumns, remainingWidth, RIGHTBAR_DEFAULT_RATIO, RIGHTBAR_MIN,
+  SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT,
+} from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
 import css from './AppFrame.module.css'
@@ -117,6 +128,11 @@ function DragHandle(props: { side: 'sidebar' | 'rightbar'; left: number; onStart
   )
 }
 
+/** The conversation's message column: the content edge a first-open panel starts from. */
+const CONVERSATION_CONTENT_SELECTOR = '[data-conversation-content] [data-chat-flow]'
+/** Centre occupant that publishes no message column (hero or non-chat view): its centered composer. */
+const CONVERSATION_COMPOSER_SELECTOR = '[data-conversation-content] [data-composer-seat] > *'
+
 /** The three-column frame (see module doc). */
 export function AppFrame({
   useStore,
@@ -129,47 +145,95 @@ export function AppFrame({
   const layoutInfo = useStore(state => state.layoutInfo)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const viewport = layoutInfo.viewportWidth
+  // Space between the conversation's content column and the frame's right edge,
+  // as last measured; null while no centre occupant publishes a content column.
+  const [remaining, setRemaining] = useState<number | null>(null)
+  // Read inside the measurement pass, which runs between renders.
+  const remainingRef = useRef<number | null>(null)
+  remainingRef.current = remaining
+  // Whether the render in flight reserves a right track. While one is reserved
+  // the centre is already narrower than the closed geometry, so a measurement
+  // taken then reports space the track itself made room for — the derived width
+  // must never come from that. Written during render, read when measuring.
+  const reservingTrack = useRef(false)
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
+  // The same pass measures the space the conversation leaves at the frame's
+  // right edge, and both the centre occupant's own content and the frame's
+  // direct children (the centre column mounts and unmounts) feed that pass, so
+  // the derived width is ready before the first opening without a second
+  // subscription.
   useLayoutEffect(() => {
     const el = frameRef.current
     /* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
     if (el === null) return
     let raf: number | null = null
     let disposed = false
+    let measuredContent: HTMLElement | null = null
     const measure = () => {
       const width = el.getBoundingClientRect().width
       if (width > 0) actions.setViewportWidth(width)
+      const content = el.querySelector<HTMLElement>(CONVERSATION_CONTENT_SELECTOR)
+        ?? el.querySelector<HTMLElement>(CONVERSATION_COMPOSER_SELECTOR)
+      if (content !== measuredContent) {
+        if (measuredContent !== null) observer.unobserve(measuredContent)
+        measuredContent = content
+        if (content !== null) observer.observe(content)
+      }
+      if (reservingTrack.current) return
+      setRemaining(content === null
+        ? null
+        : remainingWidth(el.getBoundingClientRect().right, content.getBoundingClientRect().right))
     }
-    measure()
-    const observer = new ResizeObserver(() => {
+    const schedule = (): void => {
       if (disposed) return
       raf ??= requestAnimationFrame(() => {
         raf = null
         measure()
       })
+    }
+    const observer = new ResizeObserver(schedule)
+    // childList without subtree: the centre column replaces the conversation as
+    // a direct child of the frame, while the transcript's own churn stays below.
+    // The frame's own chrome (drag handles, a shown panel) also touches its
+    // children, so this pass runs only while the measured occupant is missing.
+    const children = new MutationObserver(() => {
+      if (remainingRef.current !== null && measuredContent !== null && measuredContent.isConnected) return
+      schedule()
     })
     observer.observe(el)
+    children.observe(el, { childList: true })
+    measure()
     return () => {
       disposed = true
       observer.disconnect()
+      children.disconnect()
       if (raf !== null) cancelAnimationFrame(raf)
     }
-  }, [actions])
+    // Re-run on a frame width change or a panel open: both re-find the centre
+    // occupant that appeared or was replaced since the last measurement.
+  }, [actions, viewport, layoutInfo.rightbarShown])
 
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
     : layoutInfo.sidebar === 0 ? SIDEBAR_DEFAULT : layoutInfo.sidebar
-  const rightbarPreference = layoutInfo.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO
+  // First-open width: the space the conversation leaves at the frame's right
+  // edge, which needs no track. Too narrow for the panel (a frame that cannot
+  // hold both) falls back to the ratio default, and only then concedes a track.
+  const fillsConversationGap = layoutInfo.rightbar === null && remaining !== null && remaining >= RIGHTBAR_MIN
+  const rightbarPreference = layoutInfo.rightbar ?? (fillsConversationGap ? remaining : viewport * RIGHTBAR_DEFAULT_RATIO)
   // Desktop reopen controls occupy the macOS session header or Windows caption row.
   const collapsedWidth = document.documentElement.dataset.platform === 'darwin'
     || document.documentElement.hasAttribute('data-windows-titlebar') ? 0 : SIDEBAR_COLLAPSED
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth)
-  const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth)
+  // A derived width never reserves a track; a dragged width or the ratio fallback does.
+  const reservedTrackWidth = layoutInfo.rightbarTrack && !fillsConversationGap ? rightbarPreference : 0
+  const cols = computeColumns(viewport, sidebarPreference, reservedTrackWidth, collapsedWidth)
+  reservingTrack.current = cols.rightbar > 0
   const colsRef = useRef(cols)
   colsRef.current = cols
   const rightbarWidth = useRef(normal.rightbar)

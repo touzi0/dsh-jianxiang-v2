@@ -140,18 +140,18 @@ describe('main panel selection', () => {
 })
 
 describe('right panel', () => {
-  it('initializes at 45% of the latest frame only on first opening', () => {
+  it('holds no width preference until the handle is dragged, across frames and reopenings', () => {
     const { store, actions } = createLayoutStore().create()
     actions.setViewportWidth(1000)
     expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
     actions.openRightbar(true, false)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(450)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
     actions.setViewportWidth(2000)
     actions.openRightbar(true, true)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(450)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
     actions.closeRightbar()
     actions.openRightbar(true, false)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(450)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
   })
 
   it('keeps track and fullscreen reports independent and clears both on close', () => {
@@ -189,10 +189,12 @@ describe('right panel', () => {
     expect(store.getSnapshot().layoutInfo.rightbar).toBe(300)
   })
 
-  it('retains a minimum normal preference when first opened fullscreen on a phone', () => {
+  it('clamps a dragged width to the panel minimum on a phone frame', () => {
     const { store, actions } = createLayoutStore().create()
     actions.setViewportWidth(320)
     actions.openRightbar(false, true)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    actions.setRightbar(1)
     expect(store.getSnapshot().layoutInfo.rightbar).toBe(300)
   })
 

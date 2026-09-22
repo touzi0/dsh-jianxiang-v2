@@ -1,0 +1,34 @@
+{
+  "name": "dsh-git-panel",
+  "version": "0.1.0",
+  "description": "Git 面板：右侧面板里只读展示当前会话仓库的分支、改动、diff 与提交历史",
+  "type": "module",
+  "private": true,
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "Git 面板：右侧面板标签页，识别当前会话的 git 仓库，只读展示分支与上游领先/落后、已暂存/未暂存/未跟踪改动、逐行 diff 与最近提交历史（可切换同目录下的其它仓库）。不提供任何写操作。",
+    "defaultEnabled": true
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "selftest": "node selftest.mjs && node selftest-live.mjs"
+  }
+}

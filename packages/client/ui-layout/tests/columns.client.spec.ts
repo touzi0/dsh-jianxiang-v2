@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { clampWidth, computeColumns } from '../src/client/columns.ts'
+import { clampWidth, computeColumns, remainingWidth, RIGHTBAR_CONTENT_GUTTER } from '../src/client/columns.ts'
 
 describe('clampWidth', () => {
   it('clamps into the range and rounds', () => {
     expect(clampWidth(250.4, 240, 420)).toBe(250)
     expect(clampWidth(100, 240, 420)).toBe(240)
     expect(clampWidth(9999, 240, 420)).toBe(420)
+  })
+})
+
+describe('remainingWidth', () => {
+  it('measures the space from the content edge to the frame edge, less the gutter', () => {
+    expect(remainingWidth(1920, 1200)).toBe(1920 - 1200 - RIGHTBAR_CONTENT_GUTTER)
+    expect(remainingWidth(1920, 1200.4)).toBe(696)
+  })
+
+  it('floors at zero for a content column at or past the frame edge', () => {
+    expect(remainingWidth(1920, 1896)).toBe(0)
+    expect(remainingWidth(1920, 2000)).toBe(0)
   })
 })
 

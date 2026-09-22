@@ -1,0 +1,81 @@
+/** Git 面板的界面文案（浏览器半边）。 */
+
+/** 词典命名空间。 */
+export const NS = 'dshGitPanel'
+
+/** 中文文案。 */
+export const zh = {
+  tab: 'Git',
+  entry: 'Git 面板',
+  entryHint: '在右侧面板查看当前仓库的分支、改动与提交历史',
+  refresh: '刷新',
+  loading: '正在读取仓库…',
+  failed: '读取失败',
+  retry: '重试',
+  repo: '仓库',
+  branch: '分支',
+  detached: 'HEAD 分离',
+  upstreamNone: '无上游',
+  ahead: '领先',
+  behind: '落后',
+  clean: '工作区干净',
+  dirty: '有未提交改动',
+  staged: '已暂存',
+  unstaged: '未暂存',
+  untracked: '未跟踪',
+  conflicted: '冲突',
+  noRepo: '这里不是 git 仓库',
+  noChanges: '没有这个类别的改动',
+  emptyRepo: '仓库还没有任何提交',
+  history: '提交历史',
+  more: '还有更早的提交',
+  filesChanged: '改动文件',
+  loadingDiff: '正在读取 diff…',
+  truncated: '内容过长，已截断显示',
+  binary: '二进制文件，不展示逐行内容',
+  emptyDiff: '没有可展示的 diff 内容',
+  untrackedContent: '未跟踪文件：以下内容按「整份新增」展示',
+  expand: '展开全部',
+  collapse: '收起',
+  close: '关闭本页',
+}
+
+/** 英文文案。 */
+export const en = {
+  tab: 'Git',
+  entry: 'Git panel',
+  entryHint: 'Inspect this repository’s branch, changes, and history in the right panel',
+  refresh: 'Refresh',
+  loading: 'Reading repository…',
+  failed: 'Could not read the repository',
+  retry: 'Retry',
+  repo: 'Repository',
+  branch: 'Branch',
+  detached: 'detached HEAD',
+  upstreamNone: 'no upstream',
+  ahead: 'ahead',
+  behind: 'behind',
+  clean: 'Working tree clean',
+  dirty: 'Uncommitted changes',
+  staged: 'Staged',
+  unstaged: 'Unstaged',
+  untracked: 'Untracked',
+  conflicted: 'Conflicted',
+  noRepo: 'Not a git repository',
+  noChanges: 'Nothing in this group',
+  emptyRepo: 'This repository has no commits yet',
+  history: 'History',
+  more: 'Older commits remain',
+  filesChanged: 'Changed files',
+  loadingDiff: 'Reading diff…',
+  truncated: 'Truncated: the content is too long',
+  binary: 'Binary file — no line-level content',
+  emptyDiff: 'No diff to show',
+  untrackedContent: 'Untracked file: shown as a full addition',
+  expand: 'Show all',
+  collapse: 'Collapse',
+  close: 'Close this page',
+}
+
+/** 本插件拥有的文案键。 */
+export type GitLocaleKey = keyof typeof zh

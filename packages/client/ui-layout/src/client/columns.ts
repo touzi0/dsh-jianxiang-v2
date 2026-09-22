@@ -2,6 +2,11 @@
  * Normal column geometry: the right column shrinks, then loses its track,
  * before the center drops below its minimum. The sidebar never concedes here;
  * AppFrame supplies its effective preference after responsive collapse.
+ *
+ * A user-dragged right panel width is a preference and reserves a track; the
+ * first-open width is derived instead — the space the conversation's content
+ * leaves at the frame's right edge (`remainingWidth`) — and reserves no track,
+ * so opening the panel never moves the conversation.
  */
 
 /** Resolved widths for one frame. */
@@ -25,8 +30,24 @@ export const SIDEBAR_AUTO_COLLAPSE = 1024
 export const RIGHTBAR_MIN = 300
 /** Maximum normal right panel width as a fraction of the frame. */
 export const RIGHTBAR_MAX_RATIO = 0.7
-/** First-open right panel preference as a fraction of the frame. */
+/** First-open right panel width as a fraction of the frame, used only when the
+ * conversation leaves less space than the panel's minimum. */
 export const RIGHTBAR_DEFAULT_RATIO = 0.45
+/** Gutter kept between the conversation's content edge and a first-open panel
+ * (the conversation's own width handle rides 24px outside the content column). */
+export const RIGHTBAR_CONTENT_GUTTER = 24
+
+/**
+ * Space the conversation leaves between its content column's right edge and the
+ * frame's right edge: the first-open panel width, taken without moving the
+ * conversation.
+ * @param frameRight - the frame's right edge, in viewport coordinates.
+ * @param contentRight - the conversation content column's right edge, in viewport coordinates.
+ * @returns the width in px, floored at zero for a content column at or past the edge.
+ */
+export function remainingWidth(frameRight: number, contentRight: number): number {
+  return Math.max(0, Math.round(frameRight - contentRight - RIGHTBAR_CONTENT_GUTTER))
+}
 
 /**
  * Clamp a panel width into its contract range.
