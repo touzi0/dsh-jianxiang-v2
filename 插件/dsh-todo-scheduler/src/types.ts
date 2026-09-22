@@ -155,3 +155,19 @@ export interface RunNowResult {
   readonly sessionId?: string
   readonly error?: string
 }
+
+/** 宿主 `ctx.tools` 的最小注册面（全局模型工具注册，官方 tool-todo 同一条正道）。 */
+export interface ToolsFace {
+  register(definition: unknown): () => void
+}
+
+/** 官方 approval 服务的最小请求面（delete/run 工具走审批）。 */
+export interface ApprovalFace {
+  request(req: {
+    agent: unknown
+    toolName: string
+    callId?: unknown
+    reason?: string
+    signal?: AbortSignal
+  }): Promise<string>
+}

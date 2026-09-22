@@ -5,18 +5,17 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { MainPanelId } from './service.ts'
 import {
-  clampWidth, CONTENT_MAX, CONTENT_MIN, CONTENT_WIDTH_STORAGE_KEY,
+  clampWidth, CONTENT_MAX, CONTENT_MIN, PANEL_CONTENT_STORAGE_KEY,
   SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
 /**
- * Read the conversation's stored content-width preference, when a valid number
- * is stored (ui-conversation's own handles and the panel's handle share it).
- * @returns the preference in px, or null.
+ * Read the panel's remembered conversation width, when a valid number is stored.
+ * @returns the remembered width in px, or null.
  */
 function readStoredContentWidth(): number | null {
   try {
-    const raw = localStorage.getItem(CONTENT_WIDTH_STORAGE_KEY)
+    const raw = localStorage.getItem(PANEL_CONTENT_STORAGE_KEY)
     if (raw === null) return null
     const value = Number(raw)
     return Number.isFinite(value) && value > 0 ? value : null
@@ -143,16 +142,15 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         d.layoutInfo.viewportWidth = width
       },
       // The panel's drag handle and the opening pin both write the
-      // conversation's content-width preference. A persisting write also
-      // updates localStorage so ui-conversation re-publishes the axis and the
-      // preference survives a reload; drag frames pass persist=false and the
-      // gesture's end passes true.
+      // conversation's content-width preference: the panel's own memory key,
+      // plus the shared ui-conversation key while the panel is open (it is
+      // removed on close, so the conversation returns to its adaptive axis).
       setContentWidth: (d, px: number, persist: boolean) => {
         d.layoutInfo.rightbarInstant = false
         d.layoutInfo.contentPref = clampWidth(px, CONTENT_MIN, CONTENT_MAX)
         if (persist) {
           try {
-            localStorage.setItem(CONTENT_WIDTH_STORAGE_KEY, `${d.layoutInfo.contentPref}`)
+            localStorage.setItem(PANEL_CONTENT_STORAGE_KEY, `${d.layoutInfo.contentPref}`)
           } catch {
             // storage unavailable: the in-memory preference still applies this session
           }

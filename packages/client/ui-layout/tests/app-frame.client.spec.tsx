@@ -148,6 +148,7 @@ beforeEach(() => {
   // The conversation's content-width preference is shared with
   // ui-conversation through localStorage; keep every test on the default axis.
   localStorage.removeItem('dsh.conversation.contentWidth')
+  localStorage.removeItem('dsh.layout.contentWidth')
   vi.stubEnv('DSH_CLIENT_TITLE', undefined)
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -389,6 +390,7 @@ describe('AppFrame right panel presentation', () => {
       if (action === 'viewport') resize(1800)
       else if (action === 'open') instance.actions.openRightbar(true, false)
       else if (action === 'toggleSidebar') instance.actions.toggleSidebar()
+      else if (action === 'setContentWidth') instance.actions.setContentWidth(350, true)
       else instance.actions[action](350)
     })
     expect(frame.dataset.rightbarInstant).toBeUndefined()
@@ -588,6 +590,7 @@ describe('AppFrame derived right panel width', () => {
     expect(tracks(frame)).toEqual([280, 544])
     expect(instance.getSnapshot().layoutInfo.contentPref).toBe(920)
     expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('920')
+    expect(localStorage.getItem('dsh.layout.contentWidth')).toBe('920')
   })
 
   it('recomputes the gap when the frame resizes', () => {
@@ -622,6 +625,11 @@ describe('AppFrame derived right panel width', () => {
     expect(tracks(frame)).toEqual([280, 644])
     act(() => { instance.actions.closeRightbar() })
     expect(tracks(frame)).toEqual([280, 0])
+    // Closing removes the shared key: the conversation returns to its adaptive
+    // axis, so narrowing the sidebar widens it live instead of staying pinned.
+    expect(localStorage.getItem('dsh.conversation.contentWidth')).toBeNull()
+    // The panel's own memory key keeps the dragged width for the next opening.
+    expect(localStorage.getItem('dsh.layout.contentWidth')).toBe('820')
     act(() => { instance.actions.openRightbar(true, false) })
     // The remembered conversation width reopens the same panel width.
     expect(rightOwner().width).toBe(644)

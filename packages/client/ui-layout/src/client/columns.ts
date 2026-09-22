@@ -39,6 +39,10 @@ export const RIGHTBAR_MAX_RATIO = 0.7
 export const CONTENT_EDGE_BUDGET = 176
 /** localStorage key of the user's dragged transcript width preference (ui-conversation owns it). */
 export const CONTENT_WIDTH_STORAGE_KEY = 'dsh.conversation.contentWidth'
+/** localStorage key of the panel's own remembered conversation width (survives reloads;
+ * the shared key above is written only while the panel is open, so a closed panel leaves
+ * the conversation on its adaptive axis instead of a pinned preference). */
+export const PANEL_CONTENT_STORAGE_KEY = 'dsh.layout.contentWidth'
 /** Drag clamp for the conversation's content-width preference. */
 export const CONTENT_MIN = 640
 export const CONTENT_MAX = 2400

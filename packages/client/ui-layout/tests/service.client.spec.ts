@@ -9,7 +9,7 @@ function fakePanels(): PanelActions {
     setSidebar: vi.fn(),
     toggleSidebar: vi.fn(),
     setViewportWidth: vi.fn(),
-    setRightbar: vi.fn(),
+    setContentWidth: vi.fn(),
     openRightbar: vi.fn(),
     closeRightbar: vi.fn(),
   }
@@ -29,8 +29,6 @@ describe('LayoutController', () => {
     expect(panels.openRightbar).toHaveBeenNthCalledWith(2, true, true)
     expect(panels.openRightbar).toHaveBeenNthCalledWith(3, false, true)
     expect(panels.closeRightbar).toHaveBeenCalledTimes(1)
-    // The drag width stays the frame's own business, never the caller's.
-    expect(panels.setRightbar).not.toHaveBeenCalled()
   })
 
   it('can toggle the sidebar immediately after construction', () => {

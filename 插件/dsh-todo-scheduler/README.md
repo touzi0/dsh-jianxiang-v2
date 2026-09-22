@@ -20,7 +20,23 @@
 
 - **AI 任务**：`ctx.get('jxAssistant')` 拿数字助理网关 → `ensure()` 保证主对话在场 → `agents.get(sessionId)` → `agent.followup(..., source: 'user')`（按用户消息显示，条目 79）。**转交即完成**：不等待数字助理跑完，记录立即落「已转交」，会话 id 即数字助理主会话。派发与汇报是数字助理自己的职责（它的提示词与 `dispatch_task` 工具），本插件只负责「到点投递」。
 - **程序任务**：官方 `ctx.subprocess.spawn({ argv, cwd, stdio 收集上限, graceMs, signal })` + `waitForExit()` + `collected.*.readFrom(0)`（与 dsh-git-panel 同一用法），不经过模型。
-- 宿主侧 API 是 Typert Remote 服务 `jxTodo`（`static inject = ['agents','workspaceRegistry']`），客户端经 `ctx.remote.$mount` 得到 `ctx.remote.jxTodo`。
+- 宿主侧 API 是 Typert Remote 服务 `jxTodo`（`static inject = ['agents','workspaceRegistry','tools']`），客户端经 `ctx.remote.$mount` 得到 `ctx.remote.jxTodo`。
+
+## 模型可直接调用的工具（v0.2.0 起）
+
+插件加载时把 **7 个全局模型工具**注册进 `ctx.tools`（官方 `tool-todo`/`todo_write` 的同一条注册正道），于是**任何普通对话**与**数字助理主对话**都能直接对待办/定时任务做增删改查：
+
+- `todo_task_list` / `todo_task_get`：列表（id、标题、执行方式、类型、启用、下次执行、上次结果）与按 id 详情。
+- `todo_task_create`：新建。`schedule` 是结构化参数（`kind` 六选一 + 配套 `at`/`time`/`days`/`every_minutes`），AI 任务（默认）与程序任务（`command` + `workspace_id`）都支持。
+- `todo_task_update` / `todo_task_delete`：按 id 修改 / 删除（删除走官方审批弹窗）。
+- `todo_task_run`：立即执行一次（走官方审批弹窗）。
+- `todo_workspace_list`：列工作区（程序任务选工作目录用）。
+
+审批纪律：`delete` / `run` 经 `ctx.get('approval')` 的官方审批链，用户批准才执行；拿不到审批服务且存在 agent 上下文时**拒绝**（fail closed）。返回值一律含任务 id 与人类可读确认。
+
+## 写盘保护（v0.2.0 起）
+
+`tasks.json` 可能被宿主进程内存里的旧数据覆写（用户曾手工往磁盘加任务）。`save()` 写盘前先重读磁盘：**内存不知道的任务/记录原样并入**（打印「写盘前并入磁盘上外部新增的任务」日志）再落盘，外部新增不再被写丢；内存知道的条目以内存为准。本进程内删除的任务记入墓碑（`deletedIds`），不会被合并步骤从磁盘「复活」。
 
 ## 数据位置
 
@@ -36,9 +52,10 @@
 ```
 package.json       模组清单（jx.defaultEnabled: true，默认启用）
 index.js           宿主空入口（真正的服务在 lib/index.js 由 main 暴露）
-lib/index.js       宿主半边：JxTodoGateway（Typert Remote 服务 + 20s 调度 tick + 两类执行）
+lib/index.js       宿主半边：JxTodoGateway（Typert Remote 服务 + 20s 调度 tick + 两类执行 + 7 个模型工具注册）
 lib/client.js      浏览器半边：词典 + 样式 + main 面板 + sidebar.panellist 行
-selftest-*.mts     四个自测：调度纯函数 / remote 工件 / 宿主网关 / jsdom 渲染
+src/tools.ts       7 个模型工具的定义（buildTodoTools，宿主与自测共用）
+selftest-*.mts     五个自测：调度纯函数 / remote 工件 / 宿主网关 / 模型工具+写盘保护 / jsdom 渲染
 ```
 
 ## 构建与自测
@@ -47,7 +64,8 @@ selftest-*.mts     四个自测：调度纯函数 / remote 工件 / 宿主网关
 node build.mjs        # tsdown 双半边（用官方仓库自带 tsdown；zod 链接进本包仅构建期用）
 node selftest-schedule.mts   # 48 项：到期/错过/不重复/不追赶的时间边界
 node selftest-remote.mts     # 22 项：descriptors 与 zod codec（官方要求的 create 工厂）
-node selftest-gateway.mts    # 53 项：假 ctx 走完两类执行全链路、v1 迁移、错过补跑、tick 防重
+node selftest-gateway.mts    # 61 项：假 ctx 走完两类执行全链路、v1 迁移、错过补跑、tick 防重
+node selftest-tools.mts      # 30 项：toSchedule 转换、7 工具行为、审批分支、写盘并入/墓碑
 node selftest-client.mts     # 49 项：jsdom 真渲染页面/表单/类型切换/portal 遮罩/记录跳转
 ```
 

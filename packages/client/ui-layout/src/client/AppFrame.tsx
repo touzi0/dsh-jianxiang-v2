@@ -29,8 +29,8 @@ import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  computeColumns, conversationContentWidth, conversationTrack, CONTENT_EDGE_BUDGET,
-  RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT,
+  computeColumns, CONTENT_WIDTH_STORAGE_KEY, conversationContentWidth, conversationTrack,
+  CONTENT_EDGE_BUDGET, RIGHTBAR_MIN, SIDEBAR_AUTO_COLLAPSE, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT,
 } from './columns.ts'
 import { DocumentTitle } from './DocumentTitle.tsx'
 import type { createLayoutStore } from './stores.ts'
@@ -129,9 +129,20 @@ function DragHandle(props: { side: 'sidebar' | 'rightbar'; left: number; onStart
   )
 }
 
+/** The user's own dragged transcript width (ui-conversation's handles own the key), when stored. */
+function readSharedContentWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(CONTENT_WIDTH_STORAGE_KEY)
+    if (raw === null) return null
+    const value = Number(raw)
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null // storage unavailable: the default content axis applies
+  }
+}
+
 /** The three-column frame (see module doc). */
-export function AppFrame({
-  useStore,
+export function AppFrame({  useStore,
   useSessions,
   usePanelInfo,
   actions,
@@ -188,13 +199,34 @@ export function AppFrame({
   // narrow to hold both it degrades to the panel minimum and the conversation
   // squeezes (its own floor may overflow, as the official ratio behaviour did).
   const panelTrack = Math.max(conversationTrack(viewport, closedSidebar, contentWidth), RIGHTBAR_MIN)
-  // Pin the default axis as the preference on the first opening: the stored
-  // value is what keeps the content width stable while the centre narrows
-  // (ui-conversation re-publishes the axis from it on the centre's resize).
+  // Pin the opening's content axis as the preference: the conversation's own
+  // stored width (its handles own that key) if present, else the default axis.
+  // The stored value is what keeps the content width stable while the centre
+  // narrows (ui-conversation re-publishes the axis from it on the centre's
+  // resize).
   useEffect(() => {
     if (!layoutInfo.rightbarShown || layoutInfo.contentPref !== null) return
-    actions.setContentWidth(conversationContentWidth(closedCenter, null), true)
+    actions.setContentWidth(conversationContentWidth(closedCenter, readSharedContentWidth()), true)
   }, [actions, closedCenter, layoutInfo.contentPref, layoutInfo.rightbarShown])
+  // Mirror the preference into the shared ui-conversation key only while the
+  // panel is open. Removing it on close returns the conversation to its
+  // adaptive axis (64% of the centre), so narrowing the sidebar widens the
+  // conversation live instead of staying pinned at the panel's width. Before
+  // the first opening the shared key stays untouched: it may hold the user's
+  // own preference from ui-conversation's handles.
+  const touchedSharedKey = useRef(false)
+  useEffect(() => {
+    try {
+      if (layoutInfo.rightbarShown) {
+        touchedSharedKey.current = true
+        localStorage.setItem(CONTENT_WIDTH_STORAGE_KEY, `${layoutInfo.contentPref ?? contentWidth}`)
+      } else if (touchedSharedKey.current) {
+        localStorage.removeItem(CONTENT_WIDTH_STORAGE_KEY)
+      }
+    } catch {
+      // storage unavailable: the in-memory preference still drives this frame
+    }
+  }, [contentWidth, layoutInfo.contentPref, layoutInfo.rightbarShown])
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
   const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, panelTrack, collapsedWidth)

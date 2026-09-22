@@ -76,9 +76,17 @@ v2 回退掉了。本模组把它带回来，并按用户决策扩成三项能�
 `jx.replaces` 禁用（实测补丁层已生成 `ui-permission: disabled: true`），
 于是 slot `conversation.input.permission` 归本模组，**不改官方源码**。
 
-- **只出现官方那一颗胶囊**：trigger 样式照搬官方 `PermissionSelect.module.css`，
-  点开是两列弹层。左列官方预设（写路径照搬官方：提交 `/permission <preset>` 命令行），
-  右列三项能力用方框多选。
+- **只出现官方那一颗胶囊**：trigger 样式逐行抄官方 `PermissionSelect.module.css`，
+  弹层卡片与行样式逐行抄官方 `Menu.module.css`（`--dsw-specific-menu` 面、r20、
+  `--dsw-elevation-prominent`、40px 行、r10 行、hover 填充），预设置文案与
+  盾牌图形逐字抄官方 `presentation.ts`/`locales.ts`，危险预设（完全权限 /
+  Auto review）走官方 `RiskConfirmation` 原语确认。右列三项能力用方框多选。
+- **左列数据源是 `remote.permissionPresets.catalog()`**（返回 `{ options: [{value,name,description}] }`）。
+  踩过的坑（2026-09-22 修复）：先前误用 `remote.agentPresets.list()`——那是预设立
+  remote，返回 `{ presets: [{id,name}], authorable }`，`value.options` 为 undefined
+  被写进 state，组件在 `state.options.find` 崩溃，slot 被错误边界吞掉，表现为
+  胶囊整个消失。当前预设的初值读会话 `permissions` 投影（官方 `PermissionSelect`
+  同款 `useProjection` 席位），本地 `setCurrent` 只作点击后的即时回显。
 - **响应式走规范通道**：控制器状态经 `hooks` 舱（裸 observable）交给渲染器绑成
   `usePermissionSplit`，组件只读 hook，不自建订阅。
 - **外观只用官方 token**（`--dsw-*`）；不引官方包的 CSS Module，

@@ -1,0 +1,22 @@
+{
+  "name": "dsh-float-clamp",
+  "version": "1.0.0",
+  "description": "浮窗回界：右侧栏拖出的浮窗超出页面边界时，把它的标题栏（移动/收回/关闭区）拉回视口内，使其始终可操作",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "jx": {
+    "description": "浮窗回界：侧栏浮窗被拖出页面边界时自动拉回，标题栏的移动/收回/关闭按钮永远够得着",
+    "defaultEnabled": true
+  }
+}

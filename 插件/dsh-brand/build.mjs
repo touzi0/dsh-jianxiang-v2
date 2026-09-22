@@ -30,7 +30,9 @@ const WHITE = ${JSON.stringify(white)};
 const BRAND_NAME = "坚祥数字助理"
 const HERO_HEADLINE = "更人性化的数字助手"
 const OFFICIAL_HEADLINES = ["探索未至之境", "Into the Unknown"]
-const OFFICIAL_PRODUCT_TITLES = ["DSH Local Build", "DSH 本地构建"]
+// official 构建档位（桌面打包用 DSH_CLIENT_BUILD_PROFILE=official 重建 dist）下产品名是
+// "DeepSeek Harness"；local 档位是 "DSH Local Build" / "DSH 本地构建"。两种都改写。
+const OFFICIAL_PRODUCT_TITLES = ["DSH Local Build", "DSH 本地构建", "DeepSeek Harness"]
 
 const inject = ["slots"]
 
@@ -87,15 +89,19 @@ function startDomObservers() {
 }
 
 function apply(ctx) {
+  // priority: -1 —— single 槽 lowest renders；官方 ui-brand-official 在 official
+  // 构建档位（DSH_CLIENT_BUILD_PROFILE=official，桌面打包重建 dist 时）会以默认
+  // priority 0 注册同名槽，同优先级第二个注册会抛错并拖垮本插件（左侧标识与标题
+  // 改写全部失效）。-1 盖过官方 0；local 档位官方不注册，-1 同样正常。
   ctx.slots.inject("sidebar.brand.mark", () => ctx.slots.register(
-    { name: "sidebar.brand.mark" },
+    { name: "sidebar.brand.mark", priority: -1 },
     (props) => Mark({ size: props.size ?? 24 })))
   ctx.slots.inject("sidebar.brand.name", () => ctx.slots.register(
-    { name: "sidebar.brand.name" },
+    { name: "sidebar.brand.name", priority: -1 },
     () => React.createElement(BrandName)))
-  // 新建对话页大标识（官方 ui-brand-official 同槽占用者，后注册者替换）。
+  // 新建对话页大标识（官方 ui-brand-official 不注册 hero 槽，无冲突；-1 保持一致）。
   ctx.slots.inject("conversation.hero.brand.mark", () => ctx.slots.register(
-    { name: "conversation.hero.brand.mark" },
+    { name: "conversation.hero.brand.mark", priority: -1 },
     (props) => Mark({ size: props.size ?? 34, className: props.className })))
   const start = () => {
     if (document.body) startDomObservers()

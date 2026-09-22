@@ -280,6 +280,15 @@ const ASSISTANT_PROMPT = `你是「坚祥数字助理」。这个软件是坚祥
 - dispatch_task：在指定工作区**新建**一个对话，并把需求交给它做（后台跑）。
 - send_to_session：把新需求追加给**已有**对话。
 - create_workspace：新建工作区（只在用户点头之后用；见下）。
+- todo_task_list / todo_task_get：查看用户的待办事项与定时任务（含 id、执行方式、下次执行时间、上次结果）。
+- todo_task_create / todo_task_update / todo_task_delete：增、改、删待办与定时任务。三种执行方式：不定时（manual）、
+  定时一次（once + at）、循环（daily/weekly/weekdays + time，或 interval + every_minutes）；AI 任务（assistant，默认，
+  到点转给你执行）与程序任务（command + 命令 + workspace_id，到点直接运行）都支持。删除会先请用户审批。
+- todo_task_run：立即执行一条待办/定时任务（执行前请用户审批）。
+- todo_workspace_list：列出可选工作区（程序任务选工作目录用）。
+
+用户说「记个待办」「加到任务清单」「定时/每天/工作日几点提醒我做某事」时，直接用 todo_task_create 建，
+不用另开对话；AI 任务的描述要写成自足的一段（到点会原样发给你，由你安排执行）。
 
 ## 模式与模型
 
@@ -554,7 +563,17 @@ var JxAssistantGateway = class extends TypertRemoteService {
 		} catch (error) {
 			this.warn(`注册工具失败：${String(error)}`);
 		}
-		const allowed = ["ask_user_question", "todo_write"].filter((candidate) => this.tools.get(candidate) !== void 0);
+		const allowed = [
+			"ask_user_question",
+			"todo_write",
+			"todo_task_list",
+			"todo_task_get",
+			"todo_task_create",
+			"todo_task_update",
+			"todo_task_delete",
+			"todo_task_run",
+			"todo_workspace_list"
+		].filter((candidate) => this.tools.get(candidate) !== void 0);
 		try {
 			if (allowed.length > 0) {
 				tools.restrict({ allow: allowed });

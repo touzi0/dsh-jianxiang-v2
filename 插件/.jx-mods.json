@@ -1,14 +1,14 @@
 {
-    "dsh-speech":  true,
-    "dsh-fulltext-search":  true,
-    "jx-demo-host":  false,
-    "dsh-bili-context":  false,
-    "dsh-compaction-tools":  false,
-    "jx-demo-client":  false,
-    "dsh-plan-aside":  false,
-    "dsh-policy-baseline":  false,
-    "dsh-permission-split":  true,
-    "dsh-ssh-rm-rewrite":  false,
-    "dsh-ssh-review":  true,
-    "dsh-transcript-fold":  true
+  "dsh-speech": true,
+  "dsh-fulltext-search": true,
+  "jx-demo-host": false,
+  "dsh-bili-context": false,
+  "dsh-compaction-tools": false,
+  "jx-demo-client": false,
+  "dsh-plan-aside": false,
+  "dsh-policy-baseline": true,
+  "dsh-permission-split": true,
+  "dsh-ssh-rm-rewrite": false,
+  "dsh-ssh-review": true,
+  "dsh-transcript-fold": true
 }

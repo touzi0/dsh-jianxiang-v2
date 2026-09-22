@@ -23,8 +23,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { computeDueSlot, computeNextRunAt, detectMissed, parseTimeToMinutes } from './schedule.ts'
+import { buildTodoTools, type ToolExecLike } from './tools.ts'
 import type {
   AgentsLike,
+  ApprovalFace,
   CommandSpec,
   CreateTaskRequest,
   MissedItem,
@@ -39,12 +41,16 @@ import type {
   TaskView,
   TodoData,
   TodoSnapshot,
+  ToolsFace,
   UpdateTaskRequest,
   WorkspaceOption,
   WorkspaceRegistryLike,
 } from './types.ts'
 
 export const name = 'dsh-todo-scheduler'
+
+/** 供离线自测直接构造工具定义（宿主运行时的注册入口在构造器里）。 */
+export { buildTodoTools, describeSchedule, toSchedule } from './tools.ts'
 
 /** 模组自身位置 → 数据目录（DSH_HOME 由启动脚本指向仓库内 dsh-home）。 */
 const LIB_DIR = dirname(fileURLToPath(import.meta.url))
@@ -243,7 +249,7 @@ function clip(text: string, max: number): string {
  */
 export class JxTodoGateway extends TypertRemoteService {
   /** 宿主服务依赖：缺一个就不挂载。 */
-  static inject = ['agents', 'workspaceRegistry']
+  static inject = ['agents', 'workspaceRegistry', 'tools']
 
   /** 内部可变副本（持久化形状见 TodoData）。 */
   private readonly tasks: TaskItem[]
@@ -251,6 +257,12 @@ export class JxTodoGateway extends TypertRemoteService {
 
   /** 在途执行（按任务 id），防同一任务并发/重复触发。 */
   private readonly dispatching = new Set<string>()
+
+  /**
+   * 本次进程内删除过的任务 id（墓碑）：save() 合并磁盘新增条目时跳过它们，
+   * 否则「内存没有、磁盘还有」无法区分「刚删除」与「外部新增」，删除会被合并步骤复活。
+   */
+  private readonly deletedIds = new Set<string>()
 
   /** 调度循环定时器。 */
   private timer: ReturnType<typeof setInterval> | undefined
@@ -269,6 +281,19 @@ export class JxTodoGateway extends TypertRemoteService {
       this.timer.unref?.()
       return () => { clearInterval(this.timer) }
     }, 'dsh-todo-scheduler: tick')
+    // 全局模型工具（todo_task_*）：注册进 ctx.tools 全局层，普通对话与数字助理
+    // 主对话都能直接增删改查待办/定时任务（官方 tool-todo 的注册方式）。
+    this.ctx.effect(() => {
+      const tools = (this.ctx as unknown as { tools?: ToolsFace }).tools
+      if (tools === undefined) {
+        this.warn('tools 服务不可用，待办模型工具未注册（页面与调度不受影响）。')
+        return () => undefined
+      }
+      const disposers = buildTodoTools(this, (exec, reason) => this.askApproval(exec, reason))
+        .map(definition => tools.register(definition))
+      console.log('[dsh-todo-scheduler] 已注册 7 个待办模型工具（todo_task_* / todo_workspace_list）')
+      return () => { for (const dispose of disposers) dispose() }
+    }, 'dsh-todo-scheduler: model tools')
     this.save()
   }
 
@@ -288,6 +313,36 @@ export class JxTodoGateway extends TypertRemoteService {
 
   private get subprocess(): SubprocessFace | undefined {
     return this.ctx.get('subprocess') as SubprocessFace | undefined
+  }
+
+  private get approval(): ApprovalFace | undefined {
+    return this.ctx.get('approval') as ApprovalFace | undefined
+  }
+
+  /**
+   * 待办工具的审批回调（delete / run 用，不绕过官方审批链）。
+   * 有 agent 上下文但拿不到 approval 服务时**拒绝**（fail closed）；
+   * 没有 agent 上下文（自测/诊断调用）无从审批，放行。
+   */
+  private async askApproval(exec: ToolExecLike, reason: string): Promise<boolean> {
+    if (exec.agent === undefined) return true
+    const approval = this.approval
+    if (approval === undefined) {
+      this.warn('approval 服务不可用，待办工具的删除/立即执行被拒绝（fail closed）。')
+      return false
+    }
+    try {
+      const outcome = await approval.request({
+        agent: exec.agent,
+        toolName: exec.name,
+        ...(exec.callId === undefined ? {} : { callId: exec.callId }),
+        reason,
+      })
+      return outcome === 'allowed-once'
+    } catch (error: unknown) {
+      this.warn(`审批请求失败（按拒绝处理）：${String(error)}`)
+      return false
+    }
   }
 
   // ------------------------------------------------------------ Remote 方法
@@ -391,6 +446,7 @@ export class JxTodoGateway extends TypertRemoteService {
   async deleteTask(request: TaskRefRequest): Promise<{ ok: true }> {
     const index = this.tasks.findIndex(item => item.id === request.id)
     if (index === -1) throw new Error(`找不到任务 ${JSON.stringify(request.id)}`)
+    this.deletedIds.add(request.id)
     this.tasks.splice(index, 1)
     this.save()
     return { ok: true }
@@ -587,8 +643,45 @@ export class JxTodoGateway extends TypertRemoteService {
 
   // -------------------------------------------------------------- 持久化与工具
 
-  /** 原子写盘：同目录临时文件 + rename。 */
+  /**
+   * 写盘前合并磁盘上的外部改动：宿主内存里的清单可能落后于磁盘（用户/其他进程
+   * 手工编辑过 tasks.json，例如直接加了一条任务）。内存不知道的任务/记录原样并入，
+   * 避免一次常规落盘把外部新增的条目写丢；内存知道的条目以内存为准（页面与调度
+   * 的在途状态不能被旧磁盘数据回滚）。
+   */
+  private mergeDiskAdditions(): void {
+    if (!existsSync(this.dataFile)) return
+    let disk: TodoData
+    try {
+      disk = JSON.parse(readFileSync(this.dataFile, 'utf8')) as TodoData
+    } catch {
+      return // 磁盘文件此刻损坏/写入中：不合并，按内存落盘（与损坏恢复路径不冲突）
+    }
+    if (!Array.isArray(disk.tasks)) return
+    const knownTasks = new Set(this.tasks.map(task => task.id))
+    for (const task of disk.tasks) {
+      if (task === null || typeof task !== 'object' || typeof (task as TaskItem).id !== 'string') continue
+      if (knownTasks.has(task.id)) continue
+      if (this.deletedIds.has(task.id)) continue // 本进程刚删的，别让合并把它复活
+      // v1 时代的旧任务没有 executor，并入时补默认值。
+      this.tasks.push((task as TaskItem).executor === undefined
+        ? { ...(task as TaskItem), executor: 'assistant' }
+        : task as TaskItem)
+      console.log(`[dsh-todo-scheduler] 写盘前并入磁盘上外部新增的任务 ${(task as TaskItem).id}`)
+    }
+    if (Array.isArray(disk.records)) {
+      const knownRecords = new Set(this.records.map(record => record.id))
+      for (const record of disk.records) {
+        if (record === null || typeof record !== 'object' || typeof (record as RunRecord).id !== 'string') continue
+        if (knownRecords.has(record.id)) continue
+        this.records.push(record as RunRecord)
+      }
+    }
+  }
+
+  /** 原子写盘：同目录临时文件 + rename（写之前先并入磁盘上的外部新增条目）。 */
   private save(): void {
+    this.mergeDiskAdditions()
     const data: TodoData = { version: 2, tasks: this.tasks, records: this.records.slice(-MAX_RECORDS) }
     try {
       mkdirSync(dirname(this.dataFile), { recursive: true })

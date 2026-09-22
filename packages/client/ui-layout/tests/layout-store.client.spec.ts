@@ -8,7 +8,7 @@ beforeEach(() => {
   vi.stubGlobal('innerWidth', 1920)
   // The content-width preference is shared with ui-conversation through
   // localStorage; keep every store test on the default axis.
-  localStorage.removeItem('dsh.conversation.contentWidth')
+  localStorage.removeItem('dsh.layout.contentWidth'); localStorage.removeItem('dsh.conversation.contentWidth')
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
@@ -160,12 +160,12 @@ describe('right panel', () => {
   })
 
   it('seeds the content-width preference from localStorage on boot', () => {
-    localStorage.setItem('dsh.conversation.contentWidth', '760')
+    localStorage.setItem('dsh.layout.contentWidth', '760')
     try {
       const { store } = createLayoutStore().create()
       expect(store.getSnapshot().layoutInfo.contentPref).toBe(760)
     } finally {
-      localStorage.removeItem('dsh.conversation.contentWidth')
+      localStorage.removeItem('dsh.layout.contentWidth'); localStorage.removeItem('dsh.conversation.contentWidth')
     }
   })
 
@@ -195,11 +195,11 @@ describe('right panel', () => {
     const { store, actions } = createLayoutStore().create()
     actions.setContentWidth(9999, false)
     expect(store.getSnapshot().layoutInfo.contentPref).toBe(2400)
-    expect(localStorage.getItem('dsh.conversation.contentWidth')).toBeNull()
+    expect(localStorage.getItem('dsh.layout.contentWidth')).toBeNull()
     actions.setContentWidth(1, true)
     expect(store.getSnapshot().layoutInfo.contentPref).toBe(640)
-    expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('640')
-    localStorage.removeItem('dsh.conversation.contentWidth')
+    expect(localStorage.getItem('dsh.layout.contentWidth')).toBe('640')
+    localStorage.removeItem('dsh.layout.contentWidth'); localStorage.removeItem('dsh.conversation.contentWidth')
   })
 
   it('collapses a manually expanded narrow sidebar on opening, not presentation reports', () => {

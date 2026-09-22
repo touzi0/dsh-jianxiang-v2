@@ -106,8 +106,13 @@ export class JxPermissionGateway extends TypertRemoteService {
   /**
    * 同步授权表。授权判定发生在工具执行热路径上，必须是同步读；
    * 会话日志仍是权威记录，这里只是它的读缓存。
+   *
+   * 刻意用 TS-private 而不是 `#private`：Typert Gateway 直调经
+   * `Reflect.get(receiver, method)` 派发，receiver 可能是服务的代理对象，
+   * 运行时私有成员的品牌检查在代理上会抛
+   * “Cannot read private member #grants from an object whose class did not declare it”。
    */
-  readonly #grants = new Map<string, Grants>()
+  private readonly grants = new Map<string, Grants>()
 
   constructor(ctx: Context) {
     super(ctx, 'jxPermission')
@@ -122,7 +127,7 @@ export class JxPermissionGateway extends TypertRemoteService {
    * @returns 三项能力的当前授权。
    */
   get(sessionId: string): Grants {
-    return this.#grants.get(sessionId) ?? { ...NO_GRANTS }
+    return this.grants.get(sessionId) ?? { ...NO_GRANTS }
   }
 
   /**
@@ -138,9 +143,9 @@ export class JxPermissionGateway extends TypertRemoteService {
     if (!CAPABILITIES.includes(capability as Capability)) {
       throw new Error(`dsh-permission-split: unknown capability ${JSON.stringify(capability)}`)
     }
-    const agent = this.#agent(sessionId)
+    const agent = this.agentOf(sessionId)
     const next: Grants = { ...this.get(sessionId), [capability]: granted === true }
-    this.#grants.set(sessionId, next)
+    this.grants.set(sessionId, next)
     agent?.session.append('jx/permission-split', { grants: next }, { ignorable: true })
     if (capability === 'shell' && granted === true && agent !== undefined) {
       setSandboxMode(agent.session as Parameters<typeof setSandboxMode>[0], 'danger-full-access')
@@ -155,8 +160,8 @@ export class JxPermissionGateway extends TypertRemoteService {
    */
   async clear(sessionId: string): Promise<Grants> {
     const next: Grants = { ...NO_GRANTS }
-    this.#grants.set(sessionId, next)
-    this.#agent(sessionId)?.session.append('jx/permission-split', { grants: next }, { ignorable: true })
+    this.grants.set(sessionId, next)
+    this.agentOf(sessionId)?.session.append('jx/permission-split', { grants: next }, { ignorable: true })
     return next
   }
 
@@ -171,7 +176,7 @@ export class JxPermissionGateway extends TypertRemoteService {
   }
 
   /** 按会话标识取 Agent；服务未就绪或会话不在运行时返回 undefined。 */
-  #agent(sessionId: string): AgentLike | undefined {
+  private agentOf(sessionId: string): AgentLike | undefined {
     const agents = (this.ctx as unknown as { agents?: AgentsService }).agents
     if (agents === undefined) return undefined
     return agents.get(sessionId)

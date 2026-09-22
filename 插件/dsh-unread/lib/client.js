@@ -6,7 +6,8 @@
  *   v2 起取代旧版右键自定义菜单）；菜单为 portal 挂 body 的 div[role="menu"]，
  *   通过含「分叉会话/Fork session」项识别会话行菜单，克隆相邻 itemWrap 保持官方样式；
  * - 未读集合按会话标题存 localStorage（浏览器本地，跨刷新保留）；
- * - MutationObserver + 轻轮询扫描会话树，命中行在行首注入 8px 红点（官方错误色令牌）；
+ * - MutationObserver + 轻轮询扫描会话树，命中行在行首悬一枚官方 StateDot 同款
+ *   10px 红点（绝对定位零占宽，不推挤标题；官方错误色令牌，深浅主题自适应）；
  * - 左键点开未读会话行即自动清除标记。
  * 局限：按标题记忆，会话改名或重名会话会失联/连带（官方行 DOM 无 session id 可依）。
  */
@@ -16,6 +17,31 @@ var module = { exports: {} }; var exports = module.exports;
 const KEY = "dsh.jx.unread.v1"
 const DOT = "jx-unread-dot"
 const ITEM = "jx-unread-item"
+const STYLE = "data-jx-unread-style"
+
+/**
+ * 官方原生小圆点（StateDot）的复刻：结构与取值逐条照搬
+ * packages/client/ui-primitives/src/StateDot.tsx + StateDot.module.css ——
+ * 外径 10px（官方 figma 默认尺寸，会话行状态点同款）、::before 同色 10% 透明
+ * 光晕（inset 0）、::after 实心核心（inset 20%，即 6px）、border-radius 50%；
+ * 颜色走官方语义令牌 --dsw-alias-state-error-primary（state='error' 红色，
+ * 浅色/深色主题各自适配）。插件不能引官方包的 CSS Module，故注入同值样式表。
+ */
+const DOT_STYLE_TEXT = ""
+  + '[jx-unread-dot]{position:relative;display:inline-block;flex:none;'
+  + 'width:10px;height:10px;color:var(--dsw-alias-state-error-primary,#e5484d)}'
+  + '[jx-unread-dot]::before{content:"";position:absolute;inset:0;border-radius:50%;'
+  + 'corner-shape:round;background:currentColor;opacity:.1}'
+  + '[jx-unread-dot]::after{content:"";position:absolute;inset:20%;border-radius:50%;'
+  + 'corner-shape:round;background:currentColor}'
+  // 三点菜单项里的图标位（官方行高更小，用 8px——官方插件管理页行内同尺寸）。
+  + '[jx-unread-menu-dot]{position:relative;display:block;width:8px;height:8px;'
+  + 'color:var(--dsw-alias-state-error-primary,#e5484d)}'
+  + '[jx-unread-menu-dot]::before{content:"";position:absolute;inset:0;border-radius:50%;'
+  + 'background:currentColor;opacity:.1}'
+  + '[jx-unread-menu-dot]::after{content:"";position:absolute;inset:20%;border-radius:50%;'
+  + 'background:currentColor}'
+  + '[jx-unread-menu-dot="idle"]{color:var(--dsw-alias-label-tertiary,#999)}'
 
 // 官方会话行菜单三兄弟的文案（中英），用于识别菜单与插入位置。
 const RENAME_LABELS = ["重命名", "Rename"]
@@ -43,10 +69,14 @@ function titleOf(row) {
 
 function ensureDot(row) {
   if (row.querySelector(`[${DOT}]`)) return
+  // 绝对定位悬在行首、不占文档流宽度——官方行内点有专属格子（不会挤标题），
+  // 我们插不进那个格子，就用定位补：标题位置分毫不动，形状/尺寸/颜色仍是
+  // 官方 StateDot 原样（10px + 光晕 + 实心核心）。
+  if (getComputedStyle(row).position === "static") row.style.position = "relative"
   const dot = document.createElement("span")
   dot.setAttribute(DOT, "")
-  dot.style.cssText = "flex:none;width:8px;height:8px;margin:0 4px 0 2px;border-radius:50%;" +
-    "background:var(--dsw-alias-state-error-primary,#e5484d);align-self:center"
+  dot.setAttribute("aria-hidden", "true")
+  dot.style.cssText = "position:absolute;left:2px;top:50%;transform:translateY(-50%)"
   row.prepend(dot)
 }
 
@@ -113,8 +143,9 @@ function injectMenuItem(menu) {
   if (iconSpan !== null) {
     iconSpan.replaceChildren()
     const dot = document.createElement("span")
-    dot.style.cssText = "display:block;width:8px;height:8px;border-radius:50%;" +
-      `background:${unread ? "var(--dsw-alias-label-tertiary,#999)" : "var(--dsw-alias-state-error-primary,#e5484d)"}`
+    // 官方 StateDot 同款结构（红色 error；已读态用官方 idle 灰）。
+    dot.setAttribute("jx-unread-menu-dot", unread ? "idle" : "error")
+    dot.setAttribute("aria-hidden", "true")
     iconSpan.appendChild(dot)
   }
   button.addEventListener("click", (e) => {
@@ -150,6 +181,13 @@ let poll = null
 
 function apply(ctx) {
   const start = () => {
+    // 官方 StateDot 样式的复刻样式表（见 DOT_STYLE_TEXT 注释）。
+    if (document.querySelector(`style[${STYLE}]`) === null) {
+      const style = document.createElement("style")
+      style.setAttribute(STYLE, "")
+      style.textContent = DOT_STYLE_TEXT
+      document.head.appendChild(style)
+    }
     observer = new MutationObserver(() => { syncRows(document); scanMenus() })
     observer.observe(document.body, { childList: true, subtree: true })
     poll = setInterval(() => { syncRows(document); scanMenus() }, 1500)
@@ -167,6 +205,7 @@ function apply(ctx) {
     document.removeEventListener("click", onClick, true)
     for (const dot of document.querySelectorAll(`[${DOT}]`)) dot.remove()
     for (const item of document.querySelectorAll(`[${ITEM}]`)) item.remove()
+    for (const style of document.querySelectorAll(`style[${STYLE}]`)) style.remove()
   }
 }
 
