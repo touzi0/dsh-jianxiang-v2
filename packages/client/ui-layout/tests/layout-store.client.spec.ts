@@ -4,11 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createLayoutStore } from '../src/client/stores.ts'
 import type { MainPanelId } from '../src/client/service.ts'
 
-beforeEach(() => { vi.stubGlobal('innerWidth', 1920) })
+beforeEach(() => {
+  vi.stubGlobal('innerWidth', 1920)
+  // The content-width preference is shared with ui-conversation through
+  // localStorage; keep every store test on the default axis.
+  localStorage.removeItem('dsh.conversation.contentWidth')
+})
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('createLayoutStore', () => {
-  it('starts with the default sidebar and no right panel preference', () => {
+  it('starts with the default sidebar and no content-width preference', () => {
     const { store } = createLayoutStore().create()
     expect(store.getSnapshot()).toEqual({
       panelInfo: { activePanelId: null },
@@ -16,7 +21,7 @@ describe('createLayoutStore', () => {
         sidebar: 280,
         viewportWidth: 1920,
         narrowExpanded: false,
-        rightbar: null,
+        contentPref: null,
         rightbarShown: false,
         rightbarTrack: false,
         rightbarFullscreen: false,
@@ -32,7 +37,7 @@ describe('createLayoutStore', () => {
     a.actions.setSidebar(400)
     a.actions.openRightbar(true, false)
     expect(b.store.getSnapshot().layoutInfo.sidebar).toBe(280)
-    expect(b.store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(b.store.getSnapshot().layoutInfo.contentPref).toBeNull()
     expect(write).not.toHaveBeenCalled()
   })
 
@@ -119,7 +124,7 @@ describe('main panel selection', () => {
     expect(store.getSnapshot().layoutInfo).toBe(selected.layoutInfo)
   })
 
-  it.each(['setSidebar', 'toggleSidebar', 'setViewportWidth', 'setRightbar', 'openRightbar', 'closeRightbar'] as const)(
+  it.each(['setSidebar', 'toggleSidebar', 'setViewportWidth', 'setContentWidth', 'openRightbar', 'closeRightbar'] as const)(
     'preserves panelInfo identity when %s changes layoutInfo', (action) => {
       const { store, actions } = createLayoutStore().create()
       actions.selectPanel(panelA)
@@ -129,7 +134,7 @@ describe('main panel selection', () => {
         case 'setSidebar': actions.setSidebar(400); break
         case 'toggleSidebar': actions.toggleSidebar(); break
         case 'setViewportWidth': actions.setViewportWidth(980); break
-        case 'setRightbar': actions.setRightbar(500); break
+        case 'setContentWidth': actions.setContentWidth(500, true); break
         case 'openRightbar': actions.openRightbar(true, true); break
         case 'closeRightbar': actions.closeRightbar(); break
       }
@@ -140,18 +145,28 @@ describe('main panel selection', () => {
 })
 
 describe('right panel', () => {
-  it('holds no width preference until the handle is dragged, across frames and reopenings', () => {
+  it('holds no content-width preference until the opening pins one or the handle drags', () => {
     const { store, actions } = createLayoutStore().create()
     actions.setViewportWidth(1000)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(store.getSnapshot().layoutInfo.contentPref).toBeNull()
     actions.openRightbar(true, false)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(store.getSnapshot().layoutInfo.contentPref).toBeNull()
     actions.setViewportWidth(2000)
     actions.openRightbar(true, true)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(store.getSnapshot().layoutInfo.contentPref).toBeNull()
     actions.closeRightbar()
     actions.openRightbar(true, false)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
+    expect(store.getSnapshot().layoutInfo.contentPref).toBeNull()
+  })
+
+  it('seeds the content-width preference from localStorage on boot', () => {
+    localStorage.setItem('dsh.conversation.contentWidth', '760')
+    try {
+      const { store } = createLayoutStore().create()
+      expect(store.getSnapshot().layoutInfo.contentPref).toBe(760)
+    } finally {
+      localStorage.removeItem('dsh.conversation.contentWidth')
+    }
   })
 
   it('keeps track and fullscreen reports independent and clears both on close', () => {
@@ -166,36 +181,25 @@ describe('right panel', () => {
     expect(store.getSnapshot().layoutInfo).toMatchObject({ rightbarShown: false, rightbarTrack: false, rightbarFullscreen: false })
   })
 
-  it('keeps dragged px preferences across resize, close, and reopen', () => {
+  it('keeps the content-width preference across resize, close, and reopen', () => {
     const { store, actions } = createLayoutStore().create()
-    actions.openRightbar(true, false)
-    actions.setRightbar(1100)
+    actions.setContentWidth(760, true)
     actions.setViewportWidth(800)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(1100)
+    expect(store.getSnapshot().layoutInfo.contentPref).toBe(760)
     actions.closeRightbar()
     actions.openRightbar(false, true)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(1100)
+    expect(store.getSnapshot().layoutInfo.contentPref).toBe(760)
   })
 
-  it('clamps drag preferences to 300px and 70% of the current frame', () => {
+  it('clamps the content-width preference to 640–2400 and persists only when asked', () => {
     const { store, actions } = createLayoutStore().create()
-    actions.setViewportWidth(1600)
-    actions.setRightbar(9999)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(1120)
-    actions.setViewportWidth(1000)
-    actions.setRightbar(9999)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(700)
-    actions.setRightbar(1)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(300)
-  })
-
-  it('clamps a dragged width to the panel minimum on a phone frame', () => {
-    const { store, actions } = createLayoutStore().create()
-    actions.setViewportWidth(320)
-    actions.openRightbar(false, true)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBeNull()
-    actions.setRightbar(1)
-    expect(store.getSnapshot().layoutInfo.rightbar).toBe(300)
+    actions.setContentWidth(9999, false)
+    expect(store.getSnapshot().layoutInfo.contentPref).toBe(2400)
+    expect(localStorage.getItem('dsh.conversation.contentWidth')).toBeNull()
+    actions.setContentWidth(1, true)
+    expect(store.getSnapshot().layoutInfo.contentPref).toBe(640)
+    expect(localStorage.getItem('dsh.conversation.contentWidth')).toBe('640')
+    localStorage.removeItem('dsh.conversation.contentWidth')
   })
 
   it('collapses a manually expanded narrow sidebar on opening, not presentation reports', () => {
@@ -263,13 +267,14 @@ describe('right panel instant geometry', () => {
     expect(store.getSnapshot().layoutInfo).toMatchObject({ rightbarTrack: false, rightbarInstant: false })
   })
 
-  it.each(['setSidebar', 'toggleSidebar', 'setRightbar', 'setViewportWidth'] as const)('clears instant geometry on %s', (action) => {
+  it.each(['setSidebar', 'toggleSidebar', 'setContentWidth', 'setViewportWidth'] as const)('clears instant geometry on %s', (action) => {
     const { store, actions } = createLayoutStore().create()
     actions.openRightbar(true, true)
     actions.closeRightbar()
     expect(store.getSnapshot().layoutInfo.rightbarInstant).toBe(true)
     if (action === 'toggleSidebar') actions.toggleSidebar()
-    else actions[action](action === 'setViewportWidth' ? 1800 : 350)
+    else if (action === 'setViewportWidth') actions.setViewportWidth(1800)
+    else actions.setContentWidth(350, true)
     expect(store.getSnapshot().layoutInfo.rightbarInstant).toBe(false)
     actions.closeRightbar()
     expect(store.getSnapshot().layoutInfo.rightbarInstant).toBe(false)

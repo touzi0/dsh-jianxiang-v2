@@ -3,10 +3,12 @@
  * before the center drops below its minimum. The sidebar never concedes here;
  * AppFrame supplies its effective preference after responsive collapse.
  *
- * A user-dragged right panel width is a preference and reserves a track; the
- * first-open width is derived instead — the space the conversation's content
- * leaves at the frame's right edge (`remainingWidth`) — and reserves no track,
- * so opening the panel never moves the conversation.
+ * The right panel's width is never stored as its own preference. It is always
+ * the space the conversation's content column leaves in the closed centre —
+ * `conversationTrack` — so every opening fills exactly that gap. Dragging the
+ * panel's handle instead adjusts the conversation's content-width preference
+ * (shared with ui-conversation's own width handles), which widens or narrows
+ * the gap and therefore the panel, and is remembered for the next opening.
  */
 
 /** Resolved widths for one frame. */
@@ -30,43 +32,44 @@ export const SIDEBAR_AUTO_COLLAPSE = 1024
 export const RIGHTBAR_MIN = 300
 /** Maximum normal right panel width as a fraction of the frame. */
 export const RIGHTBAR_MAX_RATIO = 0.7
-/** First-open right panel width as a fraction of the frame, used only when the
- * conversation leaves less space than the panel's minimum. */
-export const RIGHTBAR_DEFAULT_RATIO = 0.45
-/** Gutter kept between the conversation's content edge and a first-open panel
- * (the conversation's own width handle rides 24px outside the content column). */
-export const RIGHTBAR_CONTENT_GUTTER = 24
-
-/**
- * Space the conversation leaves between its content column's right edge and the
- * frame's right edge: the first-open panel width, taken without moving the
- * conversation.
- * @param frameRight - the frame's right edge, in viewport coordinates.
- * @param contentRight - the conversation content column's right edge, in viewport coordinates.
- * @returns the width in px, floored at zero for a content column at or past the edge.
- */
-export function remainingWidth(frameRight: number, contentRight: number): number {
-  return Math.max(0, Math.round(frameRight - contentRight - RIGHTBAR_CONTENT_GUTTER))
-}
-
+/** Horizontal room the conversation reserves for its own width handles and safe
+ * edge zones, mirrored from ui-conversation (`CONTENT_EDGE_BUDGET`): with a
+ * stored preference the content column never comes closer than 88px per side to
+ * its column's edges, which is also the gap the panel keeps to the content. */
+export const CONTENT_EDGE_BUDGET = 176
 /** localStorage key of the user's dragged transcript width preference (ui-conversation owns it). */
 export const CONTENT_WIDTH_STORAGE_KEY = 'dsh.conversation.contentWidth'
+/** Drag clamp for the conversation's content-width preference. */
+export const CONTENT_MIN = 640
+export const CONTENT_MAX = 2400
 
 /**
  * The conversation's content-axis width, mirroring ui-conversation's own rule
  * (`resolveContentWidth` in ConversationWidthControls): a stored preference
- * clamped to the column, else 64% of the column clamped to 680–920. The frame
- * uses it to derive the panel's width when the centre occupant publishes no
- * measurable content column (no session yet, non-chat view), so the panel then
- * still fills the real gap instead of a frame ratio.
+ * clamped to the column, else 64% of the column clamped to 680–920.
  * @param columnWidth - the conversation column's width in px.
  * @param preference - the user's stored width preference in px, or null.
  * @returns the content-axis width in px.
  */
 export function conversationContentWidth(columnWidth: number, preference: number | null): number {
-  const max = Math.max(640, columnWidth - 176)
-  if (preference !== null) return Math.min(Math.max(preference, 640), max)
+  const max = Math.max(CONTENT_MIN, columnWidth - CONTENT_EDGE_BUDGET)
+  if (preference !== null) return Math.min(Math.max(preference, CONTENT_MIN), max)
   return Math.max(680, Math.min(columnWidth * 0.64, 920))
+}
+
+/**
+ * The right panel's track width: the whole space the conversation's content
+ * column leaves in the closed centre, edges budget included. Opening the panel
+ * narrows the centre to content + budget, so the content keeps its width
+ * (its preference survives ui-conversation's clamp exactly) and the panel fills
+ * the rest.
+ * @param viewport - available frame width in px.
+ * @param sidebar - resolved sidebar width in px.
+ * @param contentWidth - the conversation's content-axis width in px.
+ * @returns the track width in px, floored at zero.
+ */
+export function conversationTrack(viewport: number, sidebar: number, contentWidth: number): number {
+  return Math.max(0, Math.round(viewport - sidebar - contentWidth - CONTENT_EDGE_BUDGET))
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  clampWidth, computeColumns, conversationContentWidth, remainingWidth, RIGHTBAR_CONTENT_GUTTER,
+  clampWidth, computeColumns, conversationContentWidth, conversationTrack,
 } from '../src/client/columns.ts'
 
 describe('clampWidth', () => {
@@ -8,18 +8,6 @@ describe('clampWidth', () => {
     expect(clampWidth(250.4, 240, 420)).toBe(250)
     expect(clampWidth(100, 240, 420)).toBe(240)
     expect(clampWidth(9999, 240, 420)).toBe(420)
-  })
-})
-
-describe('remainingWidth', () => {
-  it('measures the space from the content edge to the frame edge, less the gutter', () => {
-    expect(remainingWidth(1920, 1200)).toBe(1920 - 1200 - RIGHTBAR_CONTENT_GUTTER)
-    expect(remainingWidth(1920, 1200.4)).toBe(696)
-  })
-
-  it('floors at zero for a content column at or past the frame edge', () => {
-    expect(remainingWidth(1920, 1896)).toBe(0)
-    expect(remainingWidth(1920, 2000)).toBe(0)
   })
 })
 
@@ -34,6 +22,19 @@ describe('conversationContentWidth', () => {
     expect(conversationContentWidth(2280, 500)).toBe(640)
     expect(conversationContentWidth(2280, 9999)).toBe(2104)
     expect(conversationContentWidth(700, 800)).toBe(640)
+  })
+})
+
+describe('conversationTrack', () => {
+  it('is the whole space the content leaves, edge budget included', () => {
+    // 1920 − 280 sidebar − 920 content − 176 budget = 544.
+    expect(conversationTrack(1920, 280, 920)).toBe(544)
+    expect(conversationTrack(2560, 280, 920)).toBe(1184)
+  })
+
+  it('floors at zero when the content fills the centre', () => {
+    expect(conversationTrack(1200, 280, 800)).toBe(0)
+    expect(conversationTrack(1000, 280, 680)).toBe(0)
   })
 })
 

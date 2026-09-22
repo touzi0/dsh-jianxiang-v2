@@ -31,7 +31,10 @@ if (!webUrl.startsWith('http')) {
   process.exit(1)
 }
 
-// playwright 在仓库 .pnpm 里（官方 e2e 基建），浏览器用系统 Edge（免下载 chromium）。
+// playwright 在仓库 .pnpm 里（官方 e2e 基建）。浏览器来源二选一：
+// 设 VERIFY_CDP_URL 时 connectOverCDP 连一个已启动的 Edge（远程调试走 TCP，
+// 受限环境可用；launch 的 remote-debugging-pipe 是命名管道会被沙箱拦截）；
+// 否则 chromium.launch 直接用系统 Edge（channel: msedge，免下载 chromium）。
 const pnpmDir = join(ROOT, 'node_modules', '.pnpm')
 const playwrightDir = readdirSync(pnpmDir).find(name => /^playwright@\d/.test(name))
 if (playwrightDir === undefined) {
@@ -39,6 +42,8 @@ if (playwrightDir === undefined) {
   process.exit(1)
 }
 const { chromium } = await import(pathToFileURL(join(pnpmDir, playwrightDir, 'node_modules', 'playwright', 'index.mjs')).href)
+
+const cdpUrl = process.env.VERIFY_CDP_URL
 
 const results = []
 const record = (label, ok, detail = '') => {
@@ -50,9 +55,14 @@ const shot = async (page, name) => {
   console.log(`[shot] ${name}`)
 }
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true })
+const browser = cdpUrl !== undefined
+  ? await chromium.connectOverCDP(cdpUrl)
+  : await chromium.launch({ channel: 'msedge', headless: true })
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const context = cdpUrl !== undefined
+    ? browser.contexts()[0]
+    : await browser.newContext({ viewport: { width: 1440, height: 900 } })
+  const page = await context.newPage()
   page.setDefaultTimeout(60000)
 
   await page.goto(webUrl, { waitUntil: 'domcontentloaded' })

@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-entry",
   "version": "1.0.0",
-  "description": "把官方的「插件」入口从侧边栏挪进设置：设置里多一个「插件管理」标签页（点开官方插件管理页），侧栏那行隐藏；原「内置插件」分区改名「内置组件」",
+  "description": "【已退役】原本把官方「插件」入口从侧边栏挪进设置；2026-09-22 起该界面改动直接做在官方 ui-plugin-manager 里，本模组只剩空实现占位",
   "type": "module",
   "private": true,
   "main": "./index.js",
@@ -12,16 +12,11 @@
   },
   "dsh": {
     "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-plugin-manager"
-      ],
       "platform": "web"
     }
   },
   "jx": {
-    "description": "插件入口搬家：侧栏「新建会话」下面那行「插件」隐藏，改成设置 → 插件 → 「插件管理」标签页；原「内置插件」分区同时改名「内置组件」",
-    "defaultEnabled": true
+    "description": "【已退役】原「插件入口搬家」模组。界面改动已并入官方 ui-plugin-manager（设置左侧「插件管理」分区），本模组默认停用、浏览器半边为空实现；完整旧版保存在 插件\\.垃圾站\\dsh-plugin-entry\\",
+    "defaultEnabled": false
   }
 }

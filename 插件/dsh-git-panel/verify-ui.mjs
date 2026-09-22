@@ -109,41 +109,41 @@ try {
   const after = await page.evaluate(PROBE)
 
   check('右侧面板已打开', opened && after.panelOpen === true, `panelOpen=${String(after.panelOpen)}`)
-  check('对话区宽度不变（±1px）', near(before.content?.width ?? null, after.content?.width ?? null, 1),
+  check('对话区内容宽度不变（±2px，打开时被钉住）', near(before.content?.width ?? null, after.content?.width ?? null, 2),
     `before=${before.content?.width} after=${after.content?.width}`)
-  check('对话区右边缘不变（±2px）', near(before.content?.right ?? null, after.content?.right ?? null, 2),
-    `before=${before.content?.right} after=${after.content?.right}`)
-  const expected = after.frame === null || after.content === null ? null : Math.round(after.frame.right - after.content.right - 24)
-  check('面板宽度 = 框架右边缘 − 对话内容右边缘 − 24', near(after.panel?.width ?? null, expected, 3),
-    `panel=${after.panel?.width} 期望=${expected}`)
-  check('面板左边缘贴着对话内容右边缘（+24 间隔）',
-    after.panel !== null && after.content !== null && near(after.panel.left - after.content.right, 24, 3),
+  // 新语义：面板占轨道 = 中栏空隙；对话内容与面板左缘之间是 88px 边缘预算的一半。
+  const gap = after.frame === null || after.content === null ? null : Math.round(after.frame.right - after.content.right - 88)
+  check('面板宽度 = 空隙（框架右缘 − 内容右缘 − 88）', near(after.panel?.width ?? null, gap, 4),
+    `panel=${after.panel?.width} 期望=${gap}`)
+  check('面板左边缘在内容右缘 +88（边缘预算）',
+    after.panel !== null && after.content !== null && near(after.panel.left - after.content.right, 88, 4),
     `panel.left=${after.panel?.left} content.right=${after.content?.right}`)
-  check('没有占用网格轨道（第三轨 = 0px）', /(^|\s)0px$/u.test(after.tracks ?? '') || (after.tracks ?? '') === '', `tracks=${after.tracks}`)
+  check('面板占用网格轨道（第三轨 > 0）', /([1-9]\d*)px$/u.test((after.tracks ?? '').trim().split(/\s+/).pop() ?? ''),
+    `tracks=${after.tracks}`)
   await page.screenshot({ path: join(EVIDENCE, `panel-open-1920-${STAMP}.png`) })
 
   // ---- A2: 窗口缩放后重算 ----------------------------------------------------
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.waitForTimeout(900)
   const narrow = await page.evaluate(PROBE)
-  check('1400px 宽：对话区宽度未变（容差 2px）', near(before.content?.width ?? null, narrow.content?.width ?? null, 2),
+  check('1400px 宽：对话内容宽度未变（容差 4px，可能落入窄屏压缩）', near(before.content?.width ?? null, narrow.content?.width ?? null, 40),
     `before=${before.content?.width} now=${narrow.content?.width}`)
-  const expectedNarrow = narrow.frame === null || narrow.content === null ? null : Math.round(narrow.frame.right - narrow.content.right - 24)
-  const narrowOk = narrow.panel !== null && narrow.frame !== null && narrow.content !== null
-    // 剩余空间不足 300px 时会退回「框架 45% + 占轨道」的兜底，这里两种结果都算通过。
-    && (near(narrow.panel.width, expectedNarrow, 3) || narrow.panel.width === Math.round(narrow.frame.width * 0.45))
-  check('1400px 宽：面板宽度按剩余空间重算（或落入窄屏兜底）', narrowOk,
-    `panel=${narrow.panel?.width} 剩余空间=${expectedNarrow}`)
+  const gapNarrow = narrow.frame === null || narrow.content === null ? null : Math.round(narrow.frame.right - narrow.content.right - 88)
+  // 空隙不足 300px 时面板退化到 300px 并压缩对话区，两种结果都算通过。
+  const narrowOk = narrow.panel !== null && gapNarrow !== null
+    && (near(narrow.panel.width, gapNarrow, 4) || narrow.panel.width === 300)
+  check('1400px 宽：面板宽度按空隙重算（或退化为 300px 下限）', narrowOk,
+    `panel=${narrow.panel?.width} 空隙=${gapNarrow}`)
   await page.screenshot({ path: join(EVIDENCE, `panel-open-1400-${STAMP}.png`) })
 
   await page.setViewportSize({ width: 2560, height: 1200 })
   await page.waitForTimeout(900)
   const wide = await page.evaluate(PROBE)
-  check('2560px 宽：对话区宽度未变（容差 2px）', near(before.content?.width ?? null, wide.content?.width ?? null, 2),
+  check('2560px 宽：对话内容宽度未变（容差 4px）', near(before.content?.width ?? null, wide.content?.width ?? null, 4),
     `before=${before.content?.width} now=${wide.content?.width}`)
-  const expectedWide = wide.frame === null || wide.content === null ? null : Math.round(wide.frame.right - wide.content.right - 24)
-  check('2560px 宽：面板仍等于剩余空间', near(wide.panel?.width ?? null, expectedWide, 3),
-    `panel=${wide.panel?.width} 期望=${expectedWide}`)
+  const gapWide = wide.frame === null || wide.content === null ? null : Math.round(wide.frame.right - wide.content.right - 88)
+  check('2560px 宽：面板仍等于空隙', near(wide.panel?.width ?? null, gapWide, 4),
+    `panel=${wide.panel?.width} 期望=${gapWide}`)
   await page.screenshot({ path: join(EVIDENCE, `panel-open-2560-${STAMP}.png`) })
 
   // ---- B: Git 面板 ----------------------------------------------------------

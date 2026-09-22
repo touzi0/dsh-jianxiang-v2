@@ -2,8 +2,8 @@
  * 待办事项与定时任务 —— 浏览器半边。
  *
  * 侧边栏入口照官方「插件」行的同一机制注册（`sidebar.panellist` 行 + 同 key 的
- * `main` 全局面板，与 `ui-plugin-manager` 完全同构）：入口出现在官方「插件」行的
- * 位置（该行已被 dsh-plugin-entry 隐藏，视觉上就是「新工作任务 / 数字助理」下方），
+ * `main` 全局面板，与 `ui-plugin-manager` 完全同构）：入口出现在「新工作任务 /
+ * 数字助理」下方（官方插件管理已于 2026-09-22 迁入设置左侧分区，侧栏不再有该行），
  * 点击后面板在主列打开。页面风格对齐官方插件页：居中 960px 一列、20px 标题 +
  * 13px 说明、卡片列表、右上角主操作按钮（PluginManagerPage.module.css 的尺度）。
  *
@@ -637,7 +637,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         locale: NS,
         inject: () => ({ api }),
       }, TodoPage))
-      // 侧边栏行：官方「插件」行是 order 0（已被 dsh-plugin-entry 隐藏），本行出现在原位置。
+      // 侧边栏行：官方「插件」行已随插件管理迁入设置而移除，本行接在同一槽位。
       scoped.slots.inject('sidebar.panellist', () => scoped.slots.register({
         name: 'sidebar.panellist',
         id: PANEL_ID,

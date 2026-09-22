@@ -5,9 +5,25 @@
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { MainPanelId } from './service.ts'
 import {
-  clampWidth, RIGHTBAR_MAX_RATIO, RIGHTBAR_MIN,
+  clampWidth, CONTENT_MAX, CONTENT_MIN, CONTENT_WIDTH_STORAGE_KEY,
   SIDEBAR_AUTO_COLLAPSE, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
+
+/**
+ * Read the conversation's stored content-width preference, when a valid number
+ * is stored (ui-conversation's own handles and the panel's handle share it).
+ * @returns the preference in px, or null.
+ */
+function readStoredContentWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(CONTENT_WIDTH_STORAGE_KEY)
+    if (raw === null) return null
+    const value = Number(raw)
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null // storage unavailable: the default content axis applies
+  }
+}
 
 /**
  * Transient layout preferences. Responsive concessions never rewrite widths;
@@ -27,13 +43,14 @@ type LayoutInfo = {
   viewportWidth: number
   narrowExpanded: boolean
   /**
-   * User-dragged right panel width in px, or null while nobody has dragged the
-   * handle. A null preference means the frame derives the width from the space
-   * the conversation leaves on every measurement, so opening or resizing never
-   * moves the conversation; a dragged width is a preference and reserves a
-   * track. Closing the panel preserves either.
+   * The conversation's content-column width preference in px, or null while
+   * nobody has pinned one (ui-conversation's own handles and the panel's
+   * handle both write it; the store seeds it from localStorage on boot). The
+   * panel's own width is never stored: it is always the space this preference
+   * leaves in the closed centre, so every opening fills exactly that gap and
+   * dragging the panel's handle adjusts the conversation instead.
    */
-  rightbar: number | null
+  contentPref: number | null
   /**
    * Whether the right panel is drawn at all, in either presentation.
    *
@@ -64,7 +81,7 @@ type LayoutActions = {
   setSidebar: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
   setViewportWidth: (draft: LayoutState, width: number) => void
-  setRightbar: (draft: LayoutState, px: number) => void
+  setContentWidth: (draft: LayoutState, px: number, persist: boolean) => void
   openRightbar: (draft: LayoutState, track: boolean, fullscreen: boolean) => void
   closeRightbar: (draft: LayoutState) => void
 }
@@ -72,11 +89,12 @@ type LayoutActions = {
 /**
  * Create the layout panel store handle. For the sidebar the preference IS the
  * width, so closing it forgets its drag width — reopening restores the contract
- * default. The right panel holds no preference until the user drags its handle:
- * the frame derives the first-open width from the space the conversation leaves
- * (AppFrame), which keeps that width live across resizes and re-openings. Drag
- * writes clamp to the current frame's range. Narrow sidebar toggles change only
- * the expansion override; opening the right panel clears that override.
+ * default. The right panel owns no width at all: its track is derived from the
+ * conversation's content-width preference (`contentPref`, seeded from
+ * localStorage), and the panel's own drag handle writes that preference —
+ * dragging narrows the conversation and widens the gap, which the next opening
+ * remembers. Narrow sidebar toggles change only the expansion override;
+ * opening the right panel clears that override.
  * @returns the store handle (spec + type + identity + factory in one).
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
@@ -87,7 +105,7 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         sidebar: SIDEBAR_DEFAULT,
         viewportWidth: window.innerWidth,
         narrowExpanded: false,
-        rightbar: null,
+        contentPref: readStoredContentWidth(),
         rightbarShown: false,
         rightbarTrack: false,
         rightbarFullscreen: false,
@@ -124,9 +142,21 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         }
         d.layoutInfo.viewportWidth = width
       },
-      setRightbar: (d, px: number) => {
+      // The panel's drag handle and the opening pin both write the
+      // conversation's content-width preference. A persisting write also
+      // updates localStorage so ui-conversation re-publishes the axis and the
+      // preference survives a reload; drag frames pass persist=false and the
+      // gesture's end passes true.
+      setContentWidth: (d, px: number, persist: boolean) => {
         d.layoutInfo.rightbarInstant = false
-        d.layoutInfo.rightbar = clampWidth(px, RIGHTBAR_MIN, Math.max(RIGHTBAR_MIN, d.layoutInfo.viewportWidth * RIGHTBAR_MAX_RATIO))
+        d.layoutInfo.contentPref = clampWidth(px, CONTENT_MIN, CONTENT_MAX)
+        if (persist) {
+          try {
+            localStorage.setItem(CONTENT_WIDTH_STORAGE_KEY, `${d.layoutInfo.contentPref}`)
+          } catch {
+            // storage unavailable: the in-memory preference still applies this session
+          }
+        }
       },
       openRightbar: (d, track: boolean, fullscreen: boolean) => {
         if (!d.layoutInfo.rightbarShown || d.layoutInfo.rightbarTrack !== track || d.layoutInfo.rightbarFullscreen !== fullscreen) {

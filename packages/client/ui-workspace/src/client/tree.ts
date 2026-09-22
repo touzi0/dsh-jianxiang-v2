@@ -212,7 +212,7 @@ export function pinCurrentBlank(
  * 这里不能用归档来实现同样效果：`clearArchivedCurrent()` 会在每次列表快照
  * 变化时清空「当前打开但已归档」的会话，数字助理自己说话就会把用户踢出去。
  */
-const JX_ASSISTANT_SESSION_ID = 'session-jx-assistant'
+const JX_ASSISTANT_SESSION_ID = 'session-jx-assistant' as SessionId
 
 function sessionVisible(session: SessionSummary, current: SessionId | undefined, archived: ReadonlySet<SessionId>): boolean {
   return session.origin !== 'subagent'

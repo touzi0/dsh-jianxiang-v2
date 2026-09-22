@@ -27,16 +27,13 @@
       "path": "../store"
     },
     {
-      "path": "../ui-layout"
-    },
-    {
       "path": "../ui-primitives"
     },
     {
       "path": "../ui-renderer"
     },
     {
-      "path": "../ui-sidebar"
+      "path": "../ui-settings"
     },
     {
       "path": "../ui-slots"

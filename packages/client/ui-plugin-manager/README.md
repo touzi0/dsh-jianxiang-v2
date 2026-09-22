@@ -1,5 +1,5 @@
 ---
-description: "Manage the profile's plugin bundles, their rows, and the plugins' configuration from the Web sidebar."
+description: "Manage the profile's plugin bundles, their rows, and the plugins' configuration from the Settings Plugin management section."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use the **Plugins** entry in the Web sidebar to manage the profile's installed bundles and the official bundles the installation ships switched off. Switch bundles and their rows on and off, install a bundle after the Host has read what the spec names, watch pnpm's output, stop a run, and enable what it added. Uninstalling asks for confirmation. A plugin that registers a configuration page is edited here, on its own page; Settings keeps the read-only inventory.
+Use the **Plugin management** section of Settings to manage the profile's installed bundles and the official bundles the installation ships switched off. Switch bundles and their rows on and off, install a bundle after the Host has read what the spec names, watch pnpm's output, stop a run, and enable what it added. Uninstalling asks for confirmation. A plugin that registers a configuration page is edited here, on its own page; the Settings **Built-in components** section keeps the read-only inventory.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Use the **Plugins** entry in the Web sidebar to manage the profile's installed b
 <a id="use-this-package"></a>
 ## Use this package
 
-Select **Plugins** in the sidebar. The page reads the inventory and the bundles through `api-remotes` when first opened; a Host without a managed profile shows the page as unavailable. **Official** comes first and lists the bundles the installation ships for switching on — off until switched on, without an uninstall, and tagged **Beta** where the feature is one — followed by the official plugins that registered a configuration page; **Installed** lists the bundles the profile holds. Cards are listed by name, so switching a bundle on or off does not move its card. A dependency without a bundle patch is not a plugin and is not listed unless the profile selects it, in which case it carries a problem tag. Global configuration remains in the Settings **Plugins** section.
+Open Settings and select **Plugin management**. The page reads the inventory and the bundles through `api-remotes` when first opened; a Host without a managed profile shows the page as unavailable. **Official** comes first and lists the bundles the installation ships for switching on — off until switched on, without an uninstall, and tagged **Beta** where the feature is one — followed by the official plugins that registered a configuration page; **Installed** lists the bundles the profile holds. Cards are listed by name, so switching a bundle on or off does not move its card. A dependency without a bundle patch is not a plugin and is not listed unless the profile selects it, in which case it carries a problem tag. Global configuration remains in the Settings **Built-in components** section.
 
 The Agent Teams, Agent Teams Web UI, and Auto Authorization Review packages have localized names and descriptions that follow the UI language. Their detail pages retain the full npm package name; other packages display their short package name and original description.
 
@@ -69,7 +69,7 @@ Package management uses the profile's dependency records: installed bundles can 
 
 ### Registration
 
-The browser plugin registers the `plugins` sidebar entry and its `main` panel through `ctx.slots.inject()`, so both follow late slot declaration, locale changes and teardown. The page is global and belongs to no Session. Display text comes from package metadata and the page's dictionary.
+The browser plugin registers the `plugin-manager` Settings section through `ctx.slots.inject()`, so it follows late slot declaration, locale changes and teardown. The section sits immediately after the built-in components section (order 17, against that section's 15). The page is global and belongs to no Session. Display text comes from package metadata and the page's dictionary.
 
 ### The store
 
@@ -86,9 +86,9 @@ The page's `main` registration declares `plugins.item`, `plugins.bundle.config`,
 <a id="further-exploration"></a>
 ## Further Exploration
 
-These pages cover the sidebar, the Remote calls, and the Host-side manager.
+These pages cover the Settings section, the Remote calls, and the Host-side manager.
 
-- [ui-sidebar](../ui-sidebar/README.md) — the panel list the Plugins entry registers into; [ui-layout](../ui-layout/README.md) — the main slot the page occupies.
+- [ui-settings](../ui-settings/README.md) — the settings domain base declaring the `settings.section` slot this page registers into; [ui-settings-general](../ui-settings-general/README.md) — the shell that renders the section nav.
 - [api-remotes](../../api/remotes/README.md) — the Remote BFF surface behind `pluginManager.*` and `pluginInventory.*`.
 - [plugin-manager](../../boot/plugin-manager/README.md) — the Host-side manager this page drives.
 - [ui-settings-plugins](../ui-settings-plugins/README.md) — the official configuration pages that register into this page's slots.
@@ -126,4 +126,4 @@ None.
 
 </details>
 
-**Runtime invariant:** No companion is published. This package owns a sidebar panel over Host-owned facts.
+**Runtime invariant:** No companion is published. This package owns a Settings section over Host-owned facts.
