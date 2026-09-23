@@ -1,6 +1,11 @@
 /**
  * 语音输入按钮：Web Speech API 实时听写，直接写入输入框草稿。
- * 浏览器无识别引擎时回退为 MediaRecorder 录音 → 宿主 ASR 转写 → 追加进草稿。
+ * 识别服务瞬时故障（network 等）不立即结束会话：短窗口内退避自动重连，
+ * 期间用 MediaRecorder 缓冲录音，重连成功后把断线语音补写进草稿
+ * （云端 ASR 优先；本地 SenseVoice 仅在用户开关开启时作后备，关闭时
+ * 绝不加载，避免拖垮低配机器）。重连超过 3 秒仍无任何文字输出则报错
+ * 并丢弃录音，结束本次听写——不让用户说了半天才发现没转写。
+ * 浏览器完全无识别引擎时回退为 MediaRecorder 录音 → 宿主 ASR 转写。
  *
  * 自旧坚祥 dsh-file-upload(jx1.0) 的 MicButton 迁移，关键改动：
  * - 与文件上传完全解耦（回退路径改走 jxSpeech.transcribe，不再产生音频附件）；
@@ -132,6 +137,8 @@ interface DictationSession {
   userStopped: boolean
   silent: boolean
   pendingSubmit: boolean
+  /** 连续重启失败次数（onstart 清零）；驱动退避间隔与"重连中"提示。 */
+  netRetries: number
 }
 
 type SpeechRecognitionLike = {
@@ -140,6 +147,7 @@ type SpeechRecognitionLike = {
   interimResults: boolean
   start(): void
   stop(): void
+  onstart: (() => void) | null
   onresult: ((event: { resultIndex: number, results: ArrayLike<ArrayLike<{ transcript: string, isFinal?: boolean }>> }) => void) | null
   onend: (() => void) | null
   onerror: ((error: { error?: string }) => void) | null
@@ -316,6 +324,8 @@ export function MicButton({
   const [countdown, setCountdown] = useState<number | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sessionRef = useRef<DictationSession | null>(null)
+  // 断线缓冲录音的停止柄（听写会话内部登记，stop() 兜底调用）。
+  const gapStopRef = useRef<(() => void) | null>(null)
   // 本地引擎听写的控制柄（MediaRecorder + 定时增量转写）。
   const localRef = useRef<{ stop: () => void } | null>(null)
 
@@ -326,6 +336,8 @@ export function MicButton({
     recRef.current = null
     localRef.current?.stop()
     localRef.current = null
+    gapStopRef.current?.()
+    gapStopRef.current = null
     setRecording(false)
     if (timeoutRef.current !== null) {
       clearTimeout(timeoutRef.current)
@@ -441,6 +453,7 @@ export function MicButton({
       userStopped: false,
       silent: false,
       pendingSubmit: false,
+      netRetries: 0,
     }
     sessionRef.current = session
 
@@ -475,6 +488,109 @@ export function MicButton({
       if (next === cur) return
       session.lastRendered = next
       updateDraft(next)
+    }
+
+    // ---- 断线缓冲：识别服务中断期间用 MediaRecorder 兜底录音 ----------------
+    // Web Speech 的网络错误只影响识别不影响采集；缓冲录音在服务恢复
+    // （onstart）后延迟补写进草稿。补写引擎云端 ASR 优先；本地 SenseVoice
+    // 仅在用户开关开启（localEngine()）时作云端失败的后备——开关关闭时
+    // 绝不加载本地模型，避免拖垮低配机器。两者都不可用则静默丢弃，不弹错。
+    let gapStream: MediaStream | null = null
+    let gapRecorder: MediaRecorder | null = null
+    const gapChunks: Blob[] = []
+    const startGapBuffer = (): void => {
+      if (gapRecorder !== null) return
+      void navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          if (gapRecorder !== null || sessionRef.current !== session) {
+            stream.getTracks().forEach(track => { track.stop() })
+            return
+          }
+          gapStream = stream
+          const mime = MediaRecorder.isTypeSupported?.('audio/webm') === true ? 'audio/webm' : ''
+          const recorder = new MediaRecorder(stream, mime !== '' ? { mimeType: mime } : undefined)
+          recorder.ondataavailable = e => { if (e.data.size > 0) gapChunks.push(e.data) }
+          recorder.start(1000)
+          gapRecorder = recorder
+        })
+        .catch(() => undefined)
+    }
+    /** 断线缓冲转写：云端优先；本地仅在开关开启时后备；失败返回 ''。 */
+    const transcribeGap = async (blob: Blob): Promise<string> => {
+      try {
+        return await transcribe(arrayBufferToBase64(await blob.arrayBuffer()), blob.type)
+      } catch {
+        if (!localEngine()) return ''
+        try {
+          return await transcribePcm(f32ToBase64(await blobToPcm16k(blob)))
+        } catch { return '' }
+      }
+    }
+    /** 停止缓冲；discard = true 直接丢弃录音（放弃场景），否则延迟补写。 */
+    const stopGapBuffer = (discard = false): void => {
+      const recorder = gapRecorder
+      gapRecorder = null
+      if (recorder === null) return
+      recorder.onstop = () => {
+        gapStream?.getTracks().forEach(track => { track.stop() })
+        gapStream = null
+        const blob = new Blob(gapChunks, { type: recorder.mimeType || 'audio/webm' })
+        gapChunks.length = 0
+        if (discard || blob.size === 0) return
+        void transcribeGap(blob)
+          .then(text => {
+            if (text === '') return
+            if (sessionRef.current === session) {
+              session.finalText += text
+              renderLive()
+            } else {
+              // 会话已收尾（用户已停止）：延迟补写在当前草稿末尾。
+              updateDraft(readDraft() + text)
+            }
+          })
+          .catch(() => undefined)
+      }
+      try {
+        if (recorder.state !== 'inactive') recorder.stop()
+        else recorder.onstop?.(new Event('stop'))
+      } catch { /* 已停止 */ }
+    }
+    gapStopRef.current = stopGapBuffer
+
+    // ---- 重连与放弃：短窗口退避重连，超时无输出则报错收场 -------------------
+    /** 断线容忍窗口：持续重连但超过该时长仍无文字输出即放弃（毫秒）。 */
+    const GIVE_UP_MS = 3000
+    let outageStart: number | null = null
+    /** 放弃：丢弃缓冲录音、拆除会话、报错告知（避免用户白说）。 */
+    const giveUp = (): void => {
+      stopGapBuffer(true)
+      recRef.current = null
+      setRecording(false)
+      sessionRef.current = null
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      notifyError(t('mic.giveup'))
+    }
+    /** 退避重启识别（300ms 起、1.2s 封顶），窗口内持续重连。 */
+    const restartWithBackoff = (): void => {
+      if (outageStart === null) outageStart = Date.now()
+      if (Date.now() - outageStart >= GIVE_UP_MS) {
+        giveUp()
+        return
+      }
+      const delay = Math.min(300 * session.netRetries + 300, 1200)
+      session.netRetries += 1
+      startGapBuffer()
+      setTimeout(() => {
+        if (sessionRef.current !== session) return
+        try {
+          rec.start()
+        } catch {
+          restartWithBackoff()
+        }
+      }, delay)
     }
 
     rec.onresult = (event) => {
@@ -515,6 +631,13 @@ export function MicButton({
       renderLive()
     }
 
+    rec.onstart = () => {
+      // （重）连成功：清失败计数与断线计时，停止断线缓冲并补写其中语音。
+      session.netRetries = 0
+      outageStart = null
+      stopGapBuffer()
+    }
+
     rec.onend = () => {
       const s = sessionRef.current
       if (s === null) return
@@ -523,13 +646,16 @@ export function MicButton({
         timeoutRef.current = null
       }
       if (s.userStopped) {
-        // 用户主动停止：实时预览已把转写写进草稿，不动用户编辑。
+        // 用户主动停止：实时预览已把转写写进草稿，不动用户编辑；
+        // 断线缓冲（若在录音）补写完再收尾。
+        stopGapBuffer()
         recRef.current = null
         setRecording(false)
         sessionRef.current = null
         onVoiceEnd(s.baseDraft.length, s.finalText.length + s.segments.size)
       } else if (s.silent) {
         // 听写中消息已发送：拆除会话；Enter 请求的提交在此之后执行。
+        stopGapBuffer()
         recRef.current = null
         setRecording(false)
         sessionRef.current = null
@@ -538,25 +664,21 @@ export function MicButton({
           submitDraft()
         }
       } else {
-        // 引擎自行结束（静音/长语音边界）：折叠段落并重启听写。
+        // 引擎自行结束（网络错误/静音/长语音边界）：折叠段落，退避重启。
         const keys = Array.from(s.segments.keys()).sort((a, b) => a - b)
         for (const k of keys) s.finalText += s.segments.get(k) ?? ''
         s.segments.clear()
         s.finalized.clear()
         s.maxIndex = -1
-        try {
-          rec.start()
-        } catch {
-          recRef.current = null
-          setRecording(false)
-          sessionRef.current = null
-        }
+        restartWithBackoff()
       }
     }
 
     rec.onerror = (error) => {
       const code = error?.error ?? ''
+      const s = sessionRef.current
       if (code === 'not-allowed' || code === 'service-not-allowed') {
+        stopGapBuffer()
         recRef.current = null
         setRecording(false)
         sessionRef.current = null
@@ -567,27 +689,11 @@ export function MicButton({
         notifyError(t('mic.denied'))
         return
       }
-      if (code === 'no-speech') {
-        // 静音超时：结束会话（重启会循环）。
-        recRef.current = null
-        setRecording(false)
-        sessionRef.current = null
-        if (timeoutRef.current !== null) {
-          clearTimeout(timeoutRef.current)
-          timeoutRef.current = null
-        }
-        return
-      }
-      // 其他引擎错误（网络等）：改走录音转写。
-      sessionRef.current = null
-      recRef.current = null
-      setRecording(false)
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current)
-        timeoutRef.current = null
-      }
-      notifyError(t('mic.fallback'))
-      void recordAndTranscribe(transcribe, notifyError, updateDraft, readDraft, MAX_RECORD_SEC, t)
+      // 其余错误（network/no-speech/aborted 等）按瞬时故障处理：不结束
+      // 会话、不弹错，交给随后的 onend 退避重启自动重连；缓冲录音保住
+      // 中断期间的语音。s 为 null 说明会话已被拆除，忽略本次错误。
+      if (s === null) return
+      startGapBuffer()
     }
 
     recRef.current = { stop: () => { rec.stop() } }
@@ -599,11 +705,8 @@ export function MicButton({
     try {
       rec.start()
     } catch {
-      recRef.current = null
-      setRecording(false)
-      sessionRef.current = null
-      notifyError(t('mic.fallback'))
-      void recordAndTranscribe(transcribe, notifyError, updateDraft, readDraft, MAX_RECORD_SEC, t)
+      // 启动失败同样按瞬时故障退避重试（此路径 onend 不会触发）。
+      restartWithBackoff()
     }
     timeoutRef.current = setTimeout(() => { stopRef.current() }, MAX_RECORD_SEC * 1000)
     // 自动停止前最后 9 秒倒计时。

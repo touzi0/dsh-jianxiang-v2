@@ -4061,16 +4061,19 @@ const ENTRY_ORDER = 20;
 const STYLE_ID = "jx-manual-compact-style";
 /** 顶层插件先挂 Remote 命名空间服务（jxManualCompact 由 $mount 产生，不能写进顶层 inject）。 */
 const inject = ["remote"];
-/** 复刻官方 action 按钮的外观变量（token 与 ui-chat 的 MessageIconActions 一致）。 */
+/** 官方图标 + 「压缩」文字的按钮样式：字体参数逐条照抄官方用量/用时 pill（同字号同行高，基线对齐）。 */
 const BUTTON_CSS = `
-.jx-manual-compact-action{width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:28px;justify-content:center;align-items:center;padding:6px;display:inline-flex}
-.jx-manual-compact-action svg{width:calc(15px + var(--dsh-content-font-delta,0px));height:calc(15px + var(--dsh-content-font-delta,0px))}
+.jx-manual-compact-action{height:calc(28px + var(--dsh-content-font-delta,0px));padding:0 8px;gap:4px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:14px;display:inline-flex;align-items:center;font-size:var(--dsh-content-font-size-secondary, 13px);line-height:calc(24px + var(--dsh-content-font-delta, 0px))}
+.jx-manual-compact-action svg{width:calc(15px + var(--dsh-content-font-delta,0px));height:calc(15px + var(--dsh-content-font-delta,0px));flex:none}
 .jx-manual-compact-action:not(:disabled):hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .jx-manual-compact-action:disabled{cursor:default;opacity:.4}
-.jx-manual-compact-action[data-running='true'] svg{animation:jx-manual-compact-spin 1s linear infinite}
-@keyframes jx-manual-compact-spin{to{transform:rotate(360deg)}}
 .jx-manual-compact-error{margin:8px 0 0;color:var(--dsw-alias-state-error-primary,#e5484d);font-size:13px;white-space:pre-wrap;word-break:break-word}
 .jx-manual-compact-done{margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.5}
+/* 坚祥（2026-09-23 用户决策）：按钮行定序——复制1 → 压缩2 → 分支3 → 朗读4 → 用量5 → 时间6。
+   复制/分支/用量/时间的 order 由 dsh-transcript-fold 在官方 MessageIconActions 里内联注入；
+   这里只负责自己的压缩（2）与朗读（4，位置保持原相对关系，仅在三个中文按钮之后）。 */
+.jx-manual-compact-action{order:2}
+button[aria-label="朗读"],button[aria-label="Read aloud"]{order:4}
 `;
 /** 注入一次按钮样式；返回清理函数。 */
 function installStyle() {
@@ -4085,17 +4088,19 @@ function installStyle() {
 	};
 }
 /**
-* 「压缩到此轮为止」按钮 + 确认/进行/完成对话框。
+* 「压缩」文字按钮 + 确认/进行/完成对话框。
+* 按用户决策（2026-09-23）：按钮本体直接用「压缩」两个中文字，不用图形图标。
 * @param props - owner 的消息 id、会话 id、chat 快照钩子、宿主动词与文案。
-* @returns 按钮行里的一个图标按钮（轮次未知时不渲染）。
+* @returns 按钮行里的一个文字按钮（轮次未知时不渲染）。
 */
 function CompactAction({ messageId, sessionId, useChat, compact, t }) {
+	const matchAssistant = (node) => (node.kind === "assistant" || node.kind === "assistant-step") && node.data.finalNode?.messageId === messageId;
 	const turn = useChat((snapshot) => {
-		for (const node of snapshot.nodes.values()) if (node.kind === "assistant" && node.data.finalNode?.messageId === messageId) return node.data.turn ?? -1;
+		for (const node of snapshot.nodes.values()) if (matchAssistant(node)) return node.data.turn ?? -1;
 		return -1;
 	});
 	const anchorSeq = useChat((snapshot) => {
-		for (const node of snapshot.nodes.values()) if (node.kind === "assistant" && node.data.finalNode?.messageId === messageId) return node.anchorSeq ?? node.data.finalNode.seq;
+		for (const node of snapshot.nodes.values()) if (matchAssistant(node)) return node.anchorSeq ?? node.data.finalNode.seq;
 		return -1;
 	});
 	const [phase, setPhase] = (0, react.useState)("idle");
@@ -4135,7 +4140,7 @@ function CompactAction({ messageId, sessionId, useChat, compact, t }) {
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
 		label: running ? t("running") : t("action"),
 		side: "bottom",
-		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+		children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
 			type: "button",
 			className: "jx-manual-compact-action",
 			"aria-label": running ? t("running") : t("action"),
@@ -4145,7 +4150,7 @@ function CompactAction({ messageId, sessionId, useChat, compact, t }) {
 				setError(null);
 				setPhase("confirm");
 			},
-			children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCompactOutline16, {})
+			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCompactOutline16, {}), running ? t("running") : "压缩"]
 		})
 	}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
 		open,

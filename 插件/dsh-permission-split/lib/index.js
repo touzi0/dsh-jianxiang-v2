@@ -58,7 +58,7 @@ var JxPermissionGateway = class extends TypertRemoteService {
 		return this.grants.get(sessionId) ?? { ...NO_GRANTS };
 	}
 	/**
-	* 改写一项能力授权：写会话事件（审计）并更新内存表。
+	* 改写一项能力授权并更新内存表。
 	* 打开 `shell` 时同时把会话沙箱模式切到 `danger-full-access`——
 	* 该授权只开「沙箱外运行进程」这一含义，文件权限轴由官方 Access 控件自行掌控。
 	* @param sessionId - 目标会话/Agent 标识。
@@ -74,7 +74,6 @@ var JxPermissionGateway = class extends TypertRemoteService {
 			[capability]: granted === true
 		};
 		this.grants.set(sessionId, next);
-		agent?.session.append("jx/permission-split", { grants: next }, { ignorable: true });
 		if (capability === "shell" && granted === true && agent !== void 0) setSandboxMode(agent.session, "danger-full-access");
 		return next;
 	}
@@ -86,7 +85,6 @@ var JxPermissionGateway = class extends TypertRemoteService {
 	async clear(sessionId) {
 		const next = { ...NO_GRANTS };
 		this.grants.set(sessionId, next);
-		this.agentOf(sessionId)?.session.append("jx/permission-split", { grants: next }, { ignorable: true });
 		return next;
 	}
 	/**

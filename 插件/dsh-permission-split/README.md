@@ -34,12 +34,12 @@ v2 回退掉了。本模组把它带回来，并按用户决策扩成三项能�
 - **能力定义**：`CAPABILITIES`、`NO_GRANTS`、`Grants`、`normalizeGrants()`、`anyGranted()`。
 - **网关** `JxPermissionGateway`（`ctx.jxPermission`），Remote 方法 `get` / `set` / `clear`；
   构造与远程方法标记的写法对照官方 `PluginInventoryGateway` 与既有模组 `dsh-mode-switch`。
-- **存储：双写**。会话日志记一条 `jx/permission-split` 事件（审计 + 可重放），
-  内存表供同步读取。授权判定在工具执行热路径上，**不能**是异步投影查询。
-- **事件必须标 `ignorable: true`**：未知事件类型且未标该标记时，harness
-  **拒绝解析整个日志**（`storage-contract.ts`）。本模组的事件是纯信息性的，
-  其丢失不影响会话重建。官方明确该标记就是下游插件的兼容机制
-  （`known-event-types.ts`：事件名登记被否决）。
+- **存储：进程内存表**（2026-09-23 起，见《修改记录》条目 99）。授权判定在工具执行
+  热路径上，**不能**是异步投影查询。~~曾经双写会话日志记 `jx/permission-split`
+  事件~~——已移除：官方 `Session.append` 的第三参只认 SurfaceIntent、没有
+  `ignorable` 信封，此前写出的日志事件全部未带标记，导致宿主**拒读整份日志**
+  （数字助理主对话「历史加载失败」即此因）；存量日志已由
+  `工具/fix-permission-split-events.mjs` 补标修复。
 - **「会话内有效」是天然语义**：进程重启后内存清零，退化为全关，fail closed。
 - **沙箱外执行复用官方开关**：调用官方 `setSandboxMode(session, 'danger-full-access')`，
   执行侧与 `sandboxMode` 投影**无需任何新机制**。该授权只开「沙箱外运行进程」这一含义，
@@ -99,21 +99,12 @@ v2 回退掉了。本模组把它带回来，并按用户决策扩成三项能�
 直接装载该外壳，断言它不是裸 ESM、注册 id 正确、工厂导出 `apply` 且声明 `inject`，
 并逐项证明外部模块引用都已声明。
 
-## 未接线：审批弹窗第三个按钮
+## 审批弹窗第三个按钮（已放弃，死代码已删）
 
-`src/contract.ts` 与 `src/ApprovalPanel.tsx` 已写好但**未接线**：
-
-- `contract.ts` —— 把官方两值的 `ApprovalDecision` 扩成三值
-  （`'allowed-once' | 'allowed-always' | 'rejected'`），并自带一份
-  `PendingApproval`（官方那个类的 `answer()` 也只接受两值）。
-- `ApprovalPanel.tsx` —— 复制官方面板外观，仅在**升级类审批**上多渲染一个
-  「会话内始终允许」按钮（`isEscalationReason()` 从 reason 识别升级语义，沿用 v1 做法）。
-
-未接线的原因：要让它生效必须**替换官方 `conversation.composer` 面板**
-（该 slot 由 `ui-approval` 拥有），也就是重新实现 pending-interaction 注册与
-`answerApproval` 全流程；而浏览器侧无法做视觉验证（冷启动端口被在线实例占用）。
-用一个未验证的组件替换核心审批 UI，风险大于收益——**宁可少一个按钮，也不弄坏审批流**。
-接线后需用 `DSH_SNAPSHOT=replay pnpm run test:web` 做装配验证。
+`src/contract.ts` 与 `src/ApprovalPanel.tsx` 曾实现「会话内始终允许」第三按钮，
+但**始终未接线**（要接线必须替换官方 `conversation.composer` 审批面板，风险大于
+收益）。2026-09-23 按用户要求删除（git 历史与《修改记录》条目 100 可查）；
+「勾上能力不再弹窗」的需求由右列三个开关承担，不再走第三按钮路线。
 
 ## 构建与接线
 
@@ -154,7 +145,7 @@ grep -o 'require("[^"]*")' lib/client.js | sort -u
 
 ## 已知限制
 
-- 审批弹窗的第三个按钮**未接线**（见上）。
+- 审批弹窗的第三个按钮**已放弃**（见上，死代码已删）。
 - 浏览器/电脑两项能力目前只**记录授权**；「免弹窗」这一半已生效
   （`approval/request` 认领），但 provider 自身的执行点强制需在挂载
   browser-use provider 后另行对齐（v2 该 provider 实验性且默认不挂载）。

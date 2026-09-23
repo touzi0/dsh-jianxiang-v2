@@ -465,11 +465,14 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.updatesOpen, async (event) => {
     assertProductSender(event)
-    await openUpdatePrompt()
+    // 坚祥发行版：更新体系未部署（jxaizz.com 无服务端），入口彻底关闭，防止网络请求卡死 UI
+    return
   })
 
   let promptOperation: Promise<void> | undefined
   let policyAuthenticationQueued = false
+  // 坚祥发行版：更新入口已全部关闭；保留实现供日后接入 jxaizz.com 更新服务时恢复
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openUpdatePrompt = (manual = false): Promise<void> => {
     if (authenticationOperation !== undefined) {
       policyAuth?.focus(); updateDialog.focus()
@@ -578,8 +581,7 @@ async function main(): Promise<void> {
   }
 
   const automaticCheck = (): void => {
-    if (!quitting) void mandatoryPolicy?.check('foreground-or-resume').catch((error: unknown) => { console.error(error) })
-    if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
+    // 坚祥发行版：自动更新检查与强更策略查询均已禁用（服务端未部署，请求会挂起）
   }
   powerMonitor.on('resume', automaticCheck)
   app.on('will-quit', () => {
@@ -608,8 +610,6 @@ async function main(): Promise<void> {
     : []
   const applicationItems = (): MenuItemConstructorOptions[] => [
     { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
-    { type: 'separator' },
-    { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
     { type: 'separator' },
     ...hideCommands,
     { role: 'quit', ...(process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
@@ -769,9 +769,10 @@ async function main(): Promise<void> {
       refresh: async () => { await Promise.all([checkPolicyManually(), updateSchedule.check(true)]) },
       download: downloadUpdate, install: version => updates.install(version),
     })
-    void mandatoryPolicy.check('launch').then((state) => {
-      if (app.isPackaged && state.error === 'authentication-required' && !isQuitting()) queuePolicyAuthentication()
-    }).catch((error: unknown) => { console.error(error) })
+    // 坚祥发行版：启动时不再查询强更策略（服务端未部署）
+    // void mandatoryPolicy.check('launch').then((state) => {
+    //   if (app.isPackaged && state.error === 'authentication-required' && !isQuitting()) queuePolicyAuthentication()
+    // }).catch((error: unknown) => { console.error(error) })
   }
   automaticCheck()
   await reconcileBackend().catch(() => undefined)

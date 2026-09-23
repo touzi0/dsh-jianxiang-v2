@@ -14,9 +14,12 @@
  * .agents/notes/implemented/feature/2026-08-20-sandbox-always-allow）。本模组把它带回来，
  * 并按用户决策扩成三项能力。
  *
- * 存储：双写。会话日志记一条 `jx/permission-split` 事件（审计 + 可重放），
- * 内存表供同步读取（授权判定在工具执行热路径上，不能是异步投影查询）。
+ * 存储：进程内存表（授权判定在工具执行热路径上，不能是异步投影查询）。
  * 「会话内有效」是天然语义：进程重启后内存清零，退化为全关，fail closed。
+ * 2026-09-23 起不再往会话日志写 `jx/permission-split` 事件：官方 `Session.append`
+ * 没有 `ignorable` 信封参数（第三参只认 SurfaceIntent），此前写出的日志事件
+ * 均未带标记，导致宿主读取端拒读整份日志（「历史加载失败」）。存量日志已由
+ * 修复脚本补标 `ignorable: true`（见《修改记录》条目 99）。
  * 沙箱外执行走官方 `setSandboxMode(session, 'danger-full-access')`，
  * 因此执行侧与 `sandboxMode` 投影无需任何新机制。
  */
@@ -42,33 +45,10 @@ export const NO_GRANTS: Readonly<Record<Capability, boolean>> = Object.freeze({
 /** 授权表：能力 → 是否已在本会话内授权。 */
 export type Grants = Readonly<Record<Capability, boolean>>
 
-/** 会话内授权事件的载荷。 */
-export interface PermissionSplitState {
-  /** 本会话当前的能力授权。 */
-  readonly grants: Grants
-}
-
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /**
-     * 本会话的能力授权被改写一次——log-only（同 `approval/*` 与 `sandbox/mode`）：
-     * 持久、可重放、不进模型转录。最后一个此类事件是当前状态。
-     */
-    'jx/permission-split': PermissionSplitState
-  }
-}
-
 // —— 结构化类型（仅类型，构建时擦除） ——
 
 interface SessionLike {
   readonly id: string
-  /**
-   * 追加一条事件。第二个参数是可选的 envelope：`ignorable: true` 让不认识
-   * 本事件类型的读取方安全跳过，而不是**拒绝解析整个日志**
-   * （见 packages/session/session-persistence/src/storage-contract.ts）。
-   * 本模组的事件是纯信息性的，其丢失不影响会话重建，故必须标注。
-   */
-  append(type: string, data: unknown, envelope?: { ignorable?: true }): unknown
 }
 interface AgentLike {
   readonly id: string
@@ -131,7 +111,7 @@ export class JxPermissionGateway extends TypertRemoteService {
   }
 
   /**
-   * 改写一项能力授权：写会话事件（审计）并更新内存表。
+   * 改写一项能力授权并更新内存表。
    * 打开 `shell` 时同时把会话沙箱模式切到 `danger-full-access`——
    * 该授权只开「沙箱外运行进程」这一含义，文件权限轴由官方 Access 控件自行掌控。
    * @param sessionId - 目标会话/Agent 标识。
@@ -146,7 +126,6 @@ export class JxPermissionGateway extends TypertRemoteService {
     const agent = this.agentOf(sessionId)
     const next: Grants = { ...this.get(sessionId), [capability]: granted === true }
     this.grants.set(sessionId, next)
-    agent?.session.append('jx/permission-split', { grants: next }, { ignorable: true })
     if (capability === 'shell' && granted === true && agent !== undefined) {
       setSandboxMode(agent.session as Parameters<typeof setSandboxMode>[0], 'danger-full-access')
     }
@@ -161,7 +140,6 @@ export class JxPermissionGateway extends TypertRemoteService {
   async clear(sessionId: string): Promise<Grants> {
     const next: Grants = { ...NO_GRANTS }
     this.grants.set(sessionId, next)
-    this.agentOf(sessionId)?.session.append('jx/permission-split', { grants: next }, { ignorable: true })
     return next
   }
 

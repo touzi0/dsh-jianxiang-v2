@@ -1059,6 +1059,7 @@ window.__ModuleLoader__.load({
 				});
 			}, [copied, text]);
 			const clockEl = time === void 0 ? null : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				style: clock === "end" ? { order: 6 } : void 0,
 				className: clock === "start" ? MessageIconActions_module_css_default.timeStart : MessageIconActions_module_css_default.timeEnd,
 				children: formatMessageClock(time, t, day)
 			});
@@ -1071,10 +1072,19 @@ window.__ModuleLoader__.load({
 						side: "bottom",
 						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
+							"data-jx-text-action": true,
 							className: MessageIconActions_module_css_default.action,
+							style: {
+								width: "auto",
+								gap: "4px",
+								padding: "0 8px",
+								fontSize: "var(--dsh-content-font-size-secondary, 13px)",
+								lineHeight: "calc(24px + var(--dsh-content-font-delta, 0px))",
+								...clock === "end" ? { order: 1 } : {}
+							},
 							"aria-label": copied ? t("copied") : t("copy"),
 							onClick: onCopy,
-							children: copied ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, {}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCopyOutline16, {})
+							children: copied ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, {}), t("copied")] }) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCopyOutline16, {}), t("copy")] })
 						})
 					}),
 					extraActions,
@@ -1084,12 +1094,21 @@ window.__ModuleLoader__.load({
 						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							className: MessageIconActions_module_css_default.action,
+							"data-jx-text-action": true,
+							style: {
+								width: "auto",
+								gap: "4px",
+								padding: "0 8px",
+								fontSize: "var(--dsh-content-font-size-secondary, 13px)",
+								lineHeight: "calc(24px + var(--dsh-content-font-delta, 0px))",
+								order: 3
+							},
 							"aria-label": t("message.branch"),
 							"aria-disabled": branchUnavailable || void 0,
 							"aria-describedby": branchUnavailable ? reasonId : void 0,
 							"data-unavailable": branchUnavailable || void 0,
 							onClick: branchUnavailable ? void 0 : onBranch,
-							children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBranchOutline16, {})
+							children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBranchOutline16, {}), "分支"] })
 						})
 					}),
 					onBranch !== void 0 && branchUnavailable && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
@@ -1097,7 +1116,13 @@ window.__ModuleLoader__.load({
 						className: MessageIconActions_module_css_default.visuallyHidden,
 						children: t("message.branchUnavailable")
 					}),
-					usageAction,
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+						style: {
+							order: 5,
+							display: "inline-flex"
+						},
+						children: usageAction
+					}),
 					clock === "end" ? clockEl : null
 				]
 			});

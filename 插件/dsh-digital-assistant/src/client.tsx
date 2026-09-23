@@ -3,9 +3,10 @@
  *
  * 入口的呈现方式：**克隆官方「新建会话」那个按钮**，插到它正下方——这样样式、折叠态、
  * 悬停态天然与它一致（同一批 CSS Module 哈希类名），看起来就是同级的两项。
- * 为什么不注册官方 `sidebar.panellist`：那个槽渲染的是「全局面板行」，样式由 shell
- * 固定，做不到「新建会话」同款。panellist 注册仍保留作兜底（万一 DOM 注入失败至少还有
- * 入口），注入成功时用一条 CSS 把那行藏掉，避免出现两次。
+ *
+ * （2026-09-23）旧的 `sidebar.panellist` 兜底行已按用户要求删除：它是最初仿官方
+ * 插件行的入口，后来入口改成克隆「新建会话」按钮后，那行只剩一条 CSS `display:none`
+ * 藏着——本该删掉的一直是死代码。
  *
  * 官方 CSS Modules 的类名形态是 `[hash]_[local]`（见 packages/client/tsdown.client.ts:563），
  * 所以按类名里的 `newSession` 就能精确定位那个按钮（品牌行按钮的类名是 `…_brand`，不会误命中）。
@@ -23,9 +24,6 @@ export const PANEL_ID = 'digital-assistant'
 
 /** 标记我们插进侧边栏的那个按钮。 */
 const ENTRY_ATTR = 'data-jx-assistant-entry'
-
-/** 注入样式的标识，便于卸载时精确清理。 */
-const STYLE_ID = 'jx-digital-assistant-entry-style'
 
 /** 顶层插件先挂 Remote 命名空间服务（jxAssistant 由 apply 里的 $mount 产生，不能写进 inject）。 */
 export const inject = ['remote']
@@ -112,28 +110,16 @@ function flashFailure(button: HTMLElement, reason: unknown): void {
   }, 6000)
 }
 
-/**
- * 把「数字助理」按钮插到官方「新建会话」正下方，并持续维护它。
- * @param enter - 点击后要做的事（保证会话存在并打开它）。
- * @param labelOf - 当前界面的入口文案。必须取自官方 locale 服务：`document.documentElement.lang`
- *   在页面早期还是空的，用它算出来的文案会和官方词典给出的对不上，兜底面板行就藏不掉。
- * @returns dispose 卸载；resync 在文案就绪后重新同步一次。
- */
+ /**
+  * 把「数字助理」按钮插到官方「新建会话」正下方，并持续维护它。
+  * @param enter - 点击后要做的事（保证会话存在并打开它）。
+  * @param labelOf - 当前界面的入口文案。必须取自官方 locale 服务，保证文案与界面语言一致。
+  * @returns dispose 卸载；resync 在文案就绪后重新同步一次。
+  */
 function installSidebarEntry(enter: () => Promise<void>, labelOf: () => string): {
   dispose: () => void
   resync: () => void
 } {
-  // 兜底面板行（aria-label 等于同一文案）平时藏起来：注入成功时不该出现两次。
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  const applyLabel = (): string => {
-    const label = labelOf()
-    style.textContent = `button[aria-label="${label}"]:not([${ENTRY_ATTR}]){display:none !important}`
-    return label
-  }
-  applyLabel()
-  document.head.append(style)
-
   /** 克隆官方按钮，只改图标与文字——类名全部保留，折叠态与悬停态自然跟着官方走。 */
   const makeEntry = (official: HTMLElement): HTMLElement => {
     const label = labelOf()
@@ -203,10 +189,8 @@ function installSidebarEntry(enter: () => Promise<void>, labelOf: () => string):
     dispose: () => {
       observer.disconnect()
       for (const stale of document.querySelectorAll(`[${ENTRY_ATTR}]`)) stale.remove()
-      style.remove()
     },
     resync: () => {
-      applyLabel()
       sync()
     },
   }
@@ -246,12 +230,6 @@ function AssistantPanel(props: { enter: () => Promise<void>, t: (key: string) =>
       )}
     </div>
   )
-}
-
-/** 兜底面板行里的图标（正常路径下这行是隐藏的）：同一张圆脸，静态待机形态。 */
-function AssistantPanelIcon(props: { size: number }) {
-  return <span aria-hidden="true" style={{ display: 'inline-flex', lineHeight: 0 }}
-    dangerouslySetInnerHTML={{ __html: assistantFaceSvg(String(props.size)) }} />
 }
 
 /** 挂载 jxAssistant Remote，装上侧边栏入口，并保留面板槽兜底。 */
@@ -312,15 +290,6 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         locale: NS,
         inject: () => ({ enter, t }),
       }, AssistantPanel))
-
-      scoped.slots.inject('sidebar.panellist', () => scoped.slots.register({
-        name: 'sidebar.panellist',
-        id: PANEL_ID,
-        // 官方「插件」行是 order 0；大于 0 即排在它下方。
-        order: 10,
-        label: () => t('panel'),
-        locale: NS,
-      }, AssistantPanelIcon))
     },
   })
 

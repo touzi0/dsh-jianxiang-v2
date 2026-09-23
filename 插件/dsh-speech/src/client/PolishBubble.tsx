@@ -1,5 +1,5 @@
 /**
- * 润色浮窗按钮：语音输入开启的瞬间在输入框右上角外侧出现（漫画对话气泡
+ * 润色浮窗按钮：语音输入开启的瞬间在输入框上方靠中位置出现（漫画对话气泡
  * 样式，兼作"语音已开启"的告知）；点击后把语音段落交给宿主 LLM 做保守
  * 校对（只修同音错字/标点，不改写）并替换输入框中对应的语音文本。
  * 润色完成/发送消息/超时后自动隐藏。
@@ -70,7 +70,7 @@ export type PolishBubbleProps = PolishBubbleInjected & {
 }
 
 const WRAP: CSSProperties = {
-  position: 'absolute', right: 0, top: -40, zIndex: 30,
+  position: 'absolute', right: '22%', top: -40, zIndex: 30,
   display: 'flex', alignItems: 'flex-end', flexDirection: 'column',
 }
 const BUBBLE: CSSProperties = {
@@ -123,9 +123,7 @@ export function PolishBubble({ usePolish, polish, dismiss, useContext, useChat, 
       >
         {/* 气泡尾巴（指向输入框） */}
         <span style={TAIL} aria-hidden="true" />
-        {state.busy === true
-          ? <span style={DOT} />
-          : <span aria-hidden="true" style={{ fontSize: 12 }}>✨</span>}
+        {state.busy === true && <span style={DOT} />}
         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       </button>
       <style>{'@keyframes jxsp-polish-blink{0%,100%{opacity:.25}50%{opacity:1}}'}</style>

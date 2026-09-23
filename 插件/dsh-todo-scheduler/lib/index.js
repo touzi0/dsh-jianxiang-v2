@@ -664,22 +664,20 @@ const TRIGGER_LABELS = {
 	manual: "手动执行",
 	"catch-up": "错过补跑"
 };
-/** 预置任务（不定时，只记着不自动执行）：老数据缺哪条就补哪条，按 id 幂等。 */
-function makeSeedTasks() {
+/** 首启示例任务（不定时，只记着不自动执行）：演示「立即执行 → 转交数字助理」，本身不干任何实事。 */
+function makeSampleTask() {
 	const now = Date.now();
-	return [{
-		id: "task-jx-mobile-access",
-		title: "手机端访问：解锁局域网 + 扫码入口",
+	return {
+		id: "task-sample-dispatch",
+		title: "示例任务：点「立即执行」看看它怎么转交给数字助理",
 		description: [
-			"按《手机端访问实施方案.md》的结论做第一步和第二步：",
+			"这是一条示例待办，本身没有任何实际工作要做，只用来演示效果：",
 			"",
-			"1) 让 DSH 的 web 服务能绑定局域网地址，使手机在同一 Wi-Fi 下可访问（官方 CLI 层的 --host 0.0.0.0 限制不要硬改，走配置/启动器层面实现，并确认服务窗口会打印 LAN 地址与带 token 的链接）；",
-			"2) 做一个扫码入口（网页上显示二维码，或在启动窗口打印二维码），手机扫码后凭 token 换取 30 天有效的 Cookie，实现免登录进入。",
+			"- 它是不定时任务，不会自己触发；",
+			"- 点右侧「立即执行」，任务描述会原样转交给数字助理，数字助理那边像收到一条新消息一样开始处理；",
+			"- 想看定时/循环定时的效果，可以编辑它把执行方式改成「每天 21:00」之类，或者直接新建一条。",
 			"",
-			"本阶段先不做手机端样式适配（侧栏抽屉、软键盘、safe-area 等），那是后续单独一步。",
-			"要求：说明安全影响并给出限制措施（token 有效期、仅内网使用），不要动正在使用的 3080 实例配置。",
-			"",
-			"参考文档：D:\\Desktop\\童浩\\智能体工作目录\\手机端访问实施方案.md"
+			"（给数字助理的说明：收到本条时不要执行任何实际操作、不要读写文件、不要派人干活，只回一句「示例任务已收到，转交链路正常」即可。看完可以删掉这条示例。）"
 		].join("\n"),
 		enabled: true,
 		executor: "assistant",
@@ -687,40 +685,14 @@ function makeSeedTasks() {
 		target: { workspaceId: "" },
 		createdAt: now,
 		updatedAt: now
-	}, {
-		id: "task-assistant-unread",
-		title: "数字助理主对话：有新回复但前端没有提示",
-		description: [
-			"现象：在侧边栏左上角「数字助理」入口的主对话里，助理回复后前端没有任何提示（入口框不变色、没有未读标记），用户不知道已经回复了。",
-			"",
-			"要的效果：收到新回复时有明显的视觉提示（入口/会话框高亮、未读角标、变色加粗，必要时声音或系统通知），看过即消失。",
-			"",
-			"实现前先复现并定位原因：是「数字助理这个特殊会话没有接上未读机制」，还是「入口渲染路径不同导致提示没画出来」；参考官方 dsh-unread 插件的机制来接，注意与它不冲突、不要出现两份提示。"
-		].join("\n"),
-		enabled: true,
-		executor: "assistant",
-		schedule: { kind: "manual" },
-		target: { workspaceId: "" },
-		createdAt: now,
-		updatedAt: now
-	}];
+	};
 }
-/** 首启种子数据。 */
+/** 首启种子数据：只有一条示例任务；已有数据不会被改动，也不会被补种。 */
 function seedData() {
 	return {
 		version: 2,
-		tasks: makeSeedTasks(),
+		tasks: [makeSampleTask()],
 		records: []
-	};
-}
-/** 老数据文件缺某条预置任务时补上（按 id 判断；已在场的条目不动，尊重用户改动）。 */
-function ensureSeedTasks(data) {
-	const present = new Set(data.tasks.map((task) => task.id));
-	const missing = makeSeedTasks().filter((seed) => !present.has(seed.id));
-	if (missing.length === 0) return data;
-	return {
-		...data,
-		tasks: [...data.tasks, ...missing]
 	};
 }
 /** 数据 v1 → v2：旧任务没有 executor 字段，一律视为 AI 任务（当时的唯一行为）。 */
@@ -734,15 +706,15 @@ function migrateV1(parsed) {
 		records: parsed.records
 	};
 }
-/** 从磁盘读数据；文件不存在返回种子；文件损坏则把坏文件改名保留并返回种子；缺预置任务时补种。 */
+/** 从磁盘读数据；文件不存在返回种子；文件损坏则把坏文件改名保留并返回种子；已有数据保持原样（不补种）。 */
 function loadData(file) {
 	if (!existsSync(file)) return seedData();
 	try {
 		const parsed = JSON.parse(readFileSync(file, "utf8"));
 		if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.records)) throw new Error("数据文件形状不对（version/tasks/records）");
-		if (parsed.version === 1) return ensureSeedTasks(migrateV1(parsed));
+		if (parsed.version === 1) return migrateV1(parsed);
 		if (parsed.version !== 2) throw new Error(`数据文件版本不支持：${String(parsed.version)}`);
-		return ensureSeedTasks(parsed);
+		return parsed;
 	} catch (error) {
 		try {
 			renameSync(file, `${file}.bad-${Date.now()}`);

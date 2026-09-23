@@ -34,6 +34,19 @@ const OFFICIAL_HEADLINES = ["探索未至之境", "Into the Unknown"]
 // "DeepSeek Harness"；local 档位是 "DSH Local Build" / "DSH 本地构建"。两种都改写。
 const OFFICIAL_PRODUCT_TITLES = ["DSH Local Build", "DSH 本地构建", "DeepSeek Harness"]
 
+/**
+ * 干活中提示语的轮换池（同一组内按顺序轮换，定时器每 5s 推进一格）。
+ * 文案源头是 dsh-transcript-fold 里被改写的 chat.deepDiving（zh 拼命干活中… / en Working hard…）；
+ * 这里只做「显示层轮换」，不碰任何官方源码。
+ * 5s 是用户选定的节奏：一句话看得完、又不显得着急刷屏（速度对照见 干活文案节奏预览.html）。
+ */
+const PHRASE_GROUPS = [
+  ["拼命干活中…", "正在努力挣钱…", "大脑高速运转中…", "任务都交给我吧…", "稍等，马上就好…"],
+  ["Working hard…", "Hard at work…", "On it…"],
+]
+const PHRASE_INTERVAL_MS = 5000
+const PHRASE_SELECTOR = '[role="status"]'
+
 const inject = ["slots"]
 
 function Mark({ size, className }) {
@@ -75,6 +88,28 @@ function rewriteDocumentTitle() {
 
 let domObserver = null
 let titleObserver = null
+let phraseTimer = null
+
+/**
+ * 把「干活中」提示语轮换到下一格。
+ * 官方列表流的状态行是 <div role="status">提示语<span>时钟</span></div>：提示语是**纯文本首子节点**，
+ * 时钟是后面的元素节点。所以只改首文本节点，时钟（15s 后才出现）与 aria-live 都不受影响；
+ * 认不出文案（不在池里）就整行跳过，绝不误改用户消息里的同款文字。
+ */
+function rotateLoadingPhrase() {
+  for (const status of document.querySelectorAll(PHRASE_SELECTOR)) {
+    const node = status.firstChild
+    if (node === null || node.nodeType !== 3) continue
+    const text = (node.nodeValue || "").trim()
+    for (const group of PHRASE_GROUPS) {
+      const index = group.indexOf(text)
+      if (index < 0) continue
+      const next = group[(index + 1) % group.length]
+      node.nodeValue = next
+      break
+    }
+  }
+}
 
 function startDomObservers() {
   domObserver = new MutationObserver(() => rewriteHeroHeadline(document))
@@ -86,6 +121,7 @@ function startDomObservers() {
     titleObserver.observe(titleElement, { childList: true, characterData: true, subtree: true })
   }
   rewriteDocumentTitle()
+  if (phraseTimer === null) phraseTimer = setInterval(rotateLoadingPhrase, PHRASE_INTERVAL_MS)
 }
 
 function apply(ctx) {
@@ -111,6 +147,7 @@ function apply(ctx) {
   return () => {
     if (domObserver) domObserver.disconnect()
     if (titleObserver) titleObserver.disconnect()
+    if (phraseTimer !== null) { clearInterval(phraseTimer); phraseTimer = null }
     rewriteDocumentTitle()
   }
 }

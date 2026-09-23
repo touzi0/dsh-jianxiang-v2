@@ -166,15 +166,14 @@ record('入口图标换成了圆脸（data-da-face，默认待机态）', (() =>
 })())
 record('入口文字是「数字助理主对话」', (clone?.querySelector('span')?.textContent ?? '').trim() === '数字助理主对话')
 record('入口 aria-label 正确', clone?.getAttribute('aria-label') === '数字助理主对话')
-record('兜底样式已注入（藏掉面板槽那一行）', document.getElementById('jx-digital-assistant-entry-style') !== null)
 
 // ---- 点击入口 → 打开数字助理会话 ----
 clone?.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }))
 await new Promise(resolve => globalThis.setTimeout(resolve, 20))
 record('点击入口打开了数字助理会话', opened.length === 1 && opened[0] === 'session-jx-assistant')
 
-// ---- 兜底：面板槽注册仍在（正常路径下被 CSS 隐藏）----
-record('仍注册了侧边栏兜底行', registrations.some(item => item.slot === 'sidebar.panellist' && item.options.id === 'digital-assistant'))
+// ---- 兜底：main 面板仍在；旧的 sidebar.panellist 行已删除（2026-09-23，死代码清理）----
+record('已不再注册侧边栏兜底行（死代码已删）', !registrations.some(item => item.slot === 'sidebar.panellist' && item.options.id === 'digital-assistant'))
 record('仍注册了 main 兜底面板', registrations.some(item => item.slot === 'main' && item.options.key === 'digital-assistant'))
 
 // ---- 官方重渲染后能自己补回来 ----
@@ -185,8 +184,7 @@ record('节点被移除后会自动补回', official.nextElementSibling?.hasAttr
 
 // ---- 卸载清理 ----
 await (dispose as () => Promise<void>)()
-record('卸载后入口与样式都被清掉', document.querySelector('[data-jx-assistant-entry]') === null
-  && document.getElementById('jx-digital-assistant-entry-style') === null)
+record('卸载后入口被清掉', document.querySelector('[data-jx-assistant-entry]') === null)
 
 let failed = 0
 for (const [label, ok] of checks) {

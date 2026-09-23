@@ -4447,7 +4447,12 @@ const DEFAULT_POLISH_PROMPT = [
 //#region src/client/MicButton.tsx
 /**
 * 语音输入按钮：Web Speech API 实时听写，直接写入输入框草稿。
-* 浏览器无识别引擎时回退为 MediaRecorder 录音 → 宿主 ASR 转写 → 追加进草稿。
+* 识别服务瞬时故障（network 等）不立即结束会话：短窗口内退避自动重连，
+* 期间用 MediaRecorder 缓冲录音，重连成功后把断线语音补写进草稿
+* （云端 ASR 优先；本地 SenseVoice 仅在用户开关开启时作后备，关闭时
+* 绝不加载，避免拖垮低配机器）。重连超过 3 秒仍无任何文字输出则报错
+* 并丢弃录音，结束本次听写——不让用户说了半天才发现没转写。
+* 浏览器完全无识别引擎时回退为 MediaRecorder 录音 → 宿主 ASR 转写。
 *
 * 自旧坚祥 dsh-file-upload(jx1.0) 的 MicButton 迁移，关键改动：
 * - 与文件上传完全解耦（回退路径改走 jxSpeech.transcribe，不再产生音频附件）；
@@ -4669,6 +4674,7 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 	const [countdown, setCountdown] = (0, react.useState)(null);
 	const countdownRef = (0, react.useRef)(null);
 	const sessionRef = (0, react.useRef)(null);
+	const gapStopRef = (0, react.useRef)(null);
 	const localRef = (0, react.useRef)(null);
 	const stop = (silent = false) => {
 		const session = sessionRef.current;
@@ -4677,6 +4683,8 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 		recRef.current = null;
 		localRef.current?.stop();
 		localRef.current = null;
+		gapStopRef.current?.();
+		gapStopRef.current = null;
 		setRecording(false);
 		if (timeoutRef.current !== null) {
 			clearTimeout(timeoutRef.current);
@@ -4789,7 +4797,8 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 			dedupConsumed: /* @__PURE__ */ new Map(),
 			userStopped: false,
 			silent: false,
-			pendingSubmit: false
+			pendingSubmit: false,
+			netRetries: 0
 		};
 		sessionRef.current = session;
 		const flushSegments = () => {
@@ -4819,6 +4828,102 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 			session.lastRendered = next;
 			updateDraft(next);
 		};
+		let gapStream = null;
+		let gapRecorder = null;
+		const gapChunks = [];
+		const startGapBuffer = () => {
+			if (gapRecorder !== null) return;
+			navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+				if (gapRecorder !== null || sessionRef.current !== session) {
+					stream.getTracks().forEach((track) => {
+						track.stop();
+					});
+					return;
+				}
+				gapStream = stream;
+				const mime = MediaRecorder.isTypeSupported?.("audio/webm") === true ? "audio/webm" : "";
+				const recorder = new MediaRecorder(stream, mime !== "" ? { mimeType: mime } : void 0);
+				recorder.ondataavailable = (e) => {
+					if (e.data.size > 0) gapChunks.push(e.data);
+				};
+				recorder.start(1e3);
+				gapRecorder = recorder;
+			}).catch(() => void 0);
+		};
+		/** 断线缓冲转写：云端优先；本地仅在开关开启时后备；失败返回 ''。 */
+		const transcribeGap = async (blob) => {
+			try {
+				return await transcribe(arrayBufferToBase64(await blob.arrayBuffer()), blob.type);
+			} catch {
+				if (!localEngine()) return "";
+				try {
+					return await transcribePcm(f32ToBase64(await blobToPcm16k(blob)));
+				} catch {
+					return "";
+				}
+			}
+		};
+		/** 停止缓冲；discard = true 直接丢弃录音（放弃场景），否则延迟补写。 */
+		const stopGapBuffer = (discard = false) => {
+			const recorder = gapRecorder;
+			gapRecorder = null;
+			if (recorder === null) return;
+			recorder.onstop = () => {
+				gapStream?.getTracks().forEach((track) => {
+					track.stop();
+				});
+				gapStream = null;
+				const blob = new Blob(gapChunks, { type: recorder.mimeType || "audio/webm" });
+				gapChunks.length = 0;
+				if (discard || blob.size === 0) return;
+				transcribeGap(blob).then((text) => {
+					if (text === "") return;
+					if (sessionRef.current === session) {
+						session.finalText += text;
+						renderLive();
+					} else updateDraft(readDraft() + text);
+				}).catch(() => void 0);
+			};
+			try {
+				if (recorder.state !== "inactive") recorder.stop();
+				else recorder.onstop?.(new Event("stop"));
+			} catch {}
+		};
+		gapStopRef.current = stopGapBuffer;
+		/** 断线容忍窗口：持续重连但超过该时长仍无文字输出即放弃（毫秒）。 */
+		const GIVE_UP_MS = 3e3;
+		let outageStart = null;
+		/** 放弃：丢弃缓冲录音、拆除会话、报错告知（避免用户白说）。 */
+		const giveUp = () => {
+			stopGapBuffer(true);
+			recRef.current = null;
+			setRecording(false);
+			sessionRef.current = null;
+			if (timeoutRef.current !== null) {
+				clearTimeout(timeoutRef.current);
+				timeoutRef.current = null;
+			}
+			notifyError(t("mic.giveup"));
+		};
+		/** 退避重启识别（300ms 起、1.2s 封顶），窗口内持续重连。 */
+		const restartWithBackoff = () => {
+			if (outageStart === null) outageStart = Date.now();
+			if (Date.now() - outageStart >= GIVE_UP_MS) {
+				giveUp();
+				return;
+			}
+			const delay = Math.min(300 * session.netRetries + 300, 1200);
+			session.netRetries += 1;
+			startGapBuffer();
+			setTimeout(() => {
+				if (sessionRef.current !== session) return;
+				try {
+					rec.start();
+				} catch {
+					restartWithBackoff();
+				}
+			}, delay);
+		};
 		rec.onresult = (event) => {
 			if (event.resultIndex < session.maxIndex) flushSegments();
 			for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -4845,6 +4950,11 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 			}
 			renderLive();
 		};
+		rec.onstart = () => {
+			session.netRetries = 0;
+			outageStart = null;
+			stopGapBuffer();
+		};
 		rec.onend = () => {
 			const s = sessionRef.current;
 			if (s === null) return;
@@ -4853,11 +4963,13 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 				timeoutRef.current = null;
 			}
 			if (s.userStopped) {
+				stopGapBuffer();
 				recRef.current = null;
 				setRecording(false);
 				sessionRef.current = null;
 				onVoiceEnd(s.baseDraft.length, s.finalText.length + s.segments.size);
 			} else if (s.silent) {
+				stopGapBuffer();
 				recRef.current = null;
 				setRecording(false);
 				sessionRef.current = null;
@@ -4869,18 +4981,14 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 				s.segments.clear();
 				s.finalized.clear();
 				s.maxIndex = -1;
-				try {
-					rec.start();
-				} catch {
-					recRef.current = null;
-					setRecording(false);
-					sessionRef.current = null;
-				}
+				restartWithBackoff();
 			}
 		};
 		rec.onerror = (error) => {
 			const code = error?.error ?? "";
+			const s = sessionRef.current;
 			if (code === "not-allowed" || code === "service-not-allowed") {
+				stopGapBuffer();
 				recRef.current = null;
 				setRecording(false);
 				sessionRef.current = null;
@@ -4891,25 +4999,8 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 				notifyError(t("mic.denied"));
 				return;
 			}
-			if (code === "no-speech") {
-				recRef.current = null;
-				setRecording(false);
-				sessionRef.current = null;
-				if (timeoutRef.current !== null) {
-					clearTimeout(timeoutRef.current);
-					timeoutRef.current = null;
-				}
-				return;
-			}
-			sessionRef.current = null;
-			recRef.current = null;
-			setRecording(false);
-			if (timeoutRef.current !== null) {
-				clearTimeout(timeoutRef.current);
-				timeoutRef.current = null;
-			}
-			notifyError(t("mic.fallback"));
-			recordAndTranscribe(transcribe, notifyError, updateDraft, readDraft, 60, t);
+			if (s === null) return;
+			startGapBuffer();
 		};
 		recRef.current = { stop: () => {
 			rec.stop();
@@ -4920,11 +5011,7 @@ function MicButton({ readDraft, updateDraft, watchSubmit, submitDraft, notifyVoi
 		try {
 			rec.start();
 		} catch {
-			recRef.current = null;
-			setRecording(false);
-			sessionRef.current = null;
-			notifyError(t("mic.fallback"));
-			recordAndTranscribe(transcribe, notifyError, updateDraft, readDraft, 60, t);
+			restartWithBackoff();
 		}
 		timeoutRef.current = setTimeout(() => {
 			stopRef.current();
@@ -5037,7 +5124,7 @@ function lastAssistantText(snapshot) {
 }
 const WRAP = {
 	position: "absolute",
-	right: 0,
+	right: "22%",
 	top: -40,
 	zIndex: 30,
 	display: "flex",
@@ -5110,11 +5197,7 @@ function PolishBubble({ usePolish, polish, dismiss, useContext, useChat, t }) {
 						style: TAIL,
 						"aria-hidden": "true"
 					}),
-					state.busy === true ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { style: DOT }) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						"aria-hidden": "true",
-						style: { fontSize: 12 },
-						children: "✨"
-					}),
+					state.busy === true && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { style: DOT }),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 						style: {
 							whiteSpace: "nowrap",
@@ -5601,6 +5684,7 @@ const zh = {
 	"mic.denied": "麦克风权限被拒绝，请在浏览器设置中允许使用麦克风",
 	"mic.srUnavailable": "当前浏览器不支持实时语音识别",
 	"mic.fallback": "语音识别不可用，已改用录音转写",
+	"mic.giveup": "语音识别连接失败，本次听写已停止；刚才说的内容未能转写，请稍后重试",
 	"mic.transcribing": "转写中…",
 	"mic.transcribeFailed": "语音转写失败",
 	"mic.noAsr": "当前浏览器不支持实时语音识别，且服务端未配置转写（ASR）",
@@ -5651,6 +5735,7 @@ const en = {
 	"mic.denied": "Microphone permission denied; allow it in browser settings",
 	"mic.srUnavailable": "Live speech recognition is unavailable in this browser",
 	"mic.fallback": "Speech recognition unavailable; fell back to recording",
+	"mic.giveup": "Speech recognition could not reconnect; dictation stopped. Nothing was transcribed — please try again shortly",
 	"mic.transcribing": "Transcribing…",
 	"mic.transcribeFailed": "Transcription failed",
 	"mic.noAsr": "No live recognition here, and no server-side ASR configured",

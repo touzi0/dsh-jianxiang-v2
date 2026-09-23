@@ -1,0 +1,21 @@
+{
+  "name": "dsh-image-relay",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "jx": {
+    "description": "图片代理：不支持看图的模型自动用占位符替换图片，并提供 view_image 工具把图片转发给视觉模型识别后返回文字",
+    "defaultEnabled": true
+  }
+}

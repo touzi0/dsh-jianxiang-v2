@@ -18,7 +18,7 @@
  * （裸 observable）交给渲染器绑成 `usePermissionSplit`。
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconChevronDownOutline14, RiskConfirmation, SHIELD_OUTLINE_PATH, SHIELD_OUTLINE_STROKE,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -278,17 +278,33 @@ class PermissionSplitController {
     },
   }
 
+  /** 上一次发布给订阅者的快照；状态未变（浅比较）时不换引用、不通知。 */
+  private published: SplitState | undefined
+
   private publish(): void {
-    this.state = { ...this.state }
+    // 订阅端按引用判变：内容没变就保持同一快照引用，避免无意义的重渲染，
+    // 也阻断「渲染 → effect 重拉 → 发布新引用 → 再渲染」的循环。
+    if (this.published !== undefined) {
+      let same = true
+      for (const key of Object.keys(this.state) as Array<keyof SplitState>) {
+        if (this.state[key] !== this.published[key]) { same = false; break }
+      }
+      if (same) return
+    }
+    this.published = this.state
     for (const fn of [...this.listeners]) fn()
   }
 
   /**
    * 读取当前授权与预设目录。目录是进程级不变的，只读一次。
+   * 控制器是全插件单例：换会话加载时先把授权表归零，避免上一个会话的
+   * 勾选状态残留显示（拉取失败时尤其误导）。
    * @param sessionId - 目标会话。
    */
   async load(sessionId: string): Promise<void> {
     try {
+      this.state = { ...this.state, grants: { ...NO_GRANTS } }
+      this.publish()
       const grants = await this.jxPermission.get(sessionId)
       this.state = grants.ok
         ? { ...this.state, grants: grants.value, error: null }
@@ -331,6 +347,15 @@ class PermissionSplitController {
         error: error instanceof Error ? error.message : String(error),
       }
     }
+    this.publish()
+  }
+
+  /**
+   * 展示一条非本地化错误（预设切换失败等），下一次成功操作时清除。
+   * @param message - 错误信息。
+   */
+  showError(message: string): void {
+    this.state = { ...this.state, error: message }
     this.publish()
   }
 
@@ -402,6 +427,8 @@ export interface PermissionSplitProps {
   load: () => Promise<void>
   selectPreset: (preset: string) => Promise<void>
   setGrant: (capability: Capability, granted: boolean) => Promise<void>
+  /** 把非本地化错误（预设切换失败等）送进控制器的错误展示位。 */
+  reportError: (message: string) => void
 }
 
 const CAPABILITY_ROWS: ReadonlyArray<[Capability, string, string]> = [
@@ -427,13 +454,21 @@ export function PermissionSplit(props: PermissionSplitProps): ReactNode {
   const [confirmation, setConfirmation] = useState<string | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
 
-  useEffect(() => { void props.load() }, [props.load])
+  // 按会话加载一次：load 闭包的标识可能随注入面重算而变化，直接当 effect
+  // 依赖会在渲染循环里反复拉数据；这里以 sessionId 为准，重复调用直接跳过。
+  const loadedFor = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (sessionId === undefined || loadedFor.current === sessionId) return
+    loadedFor.current = sessionId
+    void props.load()
+  }, [sessionId, props.load])
+
   useEffect(() => {
     if (!open) return undefined
     const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') setOpen(false) }
     const onDown = (event: MouseEvent): void => {
       const target = event.target as HTMLElement | null
-      if (target?.closest('.jx-ps-anchor') === null) setOpen(false)
+      if (target === null || target.closest('.jx-ps-anchor') === null) setOpen(false)
     }
     document.addEventListener('keydown', onKey)
     document.addEventListener('mousedown', onDown)
@@ -455,11 +490,13 @@ export function PermissionSplit(props: PermissionSplitProps): ReactNode {
     : permissionLabel(current.value, current.name, t)
   const busy = pick !== null || confirmation !== null || state.busy
 
-  /** 官方同款提交路径：提交 `/permission <preset>` 命令行。 */
+  /** 官方同款提交路径：提交 `/permission <preset>` 命令行；失败要可见。 */
   const submit = (id: string): void => {
     setPick(id)
     void props.selectPreset(id)
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        props.reportError(error instanceof Error ? error.message : String(error))
+      })
       .then(() => { setPick(null) })
   }
 
@@ -625,17 +662,18 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         inject: (sessionId: string) => ({
           hooks: { permissionSplit: controller.source },
           load: async () => { await controller.load(sessionId) },
-          // 预设写路径照搬官方：提交 `/permission <preset>` 命令行。
+          // 预设写路径照搬官方：提交 `/permission <preset>` 命令行；会话不在时明确报错，不静默吞掉。
           selectPreset: async (preset: string) => {
             const live = face.sessions.binding(sessionId)?.session
-            if (live === undefined) return
+            if (live === undefined) throw new Error('session unavailable')
             const result = await live.command(`/permission ${preset}`)
-            if (!result.ok) throw new Error(`${COPY.zh.failed}: ${result.error.message}`)
+            if (!result.ok) throw new Error(result.error.message)
             controller.setCurrent(preset)
           },
           setGrant: async (capability: Capability, granted: boolean) => {
             await controller.setGrant(sessionId, capability, granted)
           },
+          reportError: (message: string) => { controller.showError(message) },
         }),
       }, PermissionSplit as never))
     },

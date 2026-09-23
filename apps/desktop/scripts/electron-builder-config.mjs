@@ -203,6 +203,10 @@ export function createElectronBuilderConfig(
       allowToChangeInstallationDirectory: false,
       installerLanguages: ['en_US', 'zh_CN'],
       differentialPackage: true,
+      // 坚祥发行版：降低压缩等级换取安装速度（默认 maximum 解压很慢）
+      compression: 'normal',
+      // 坚祥发行版：禁用 solid 压缩，逐文件存取，安装更流畅
+      solidCompression: false,
     },
     detectUpdateChannel: false,
     publish: update === undefined ? null : [{ provider: 'generic', url: update.publicUrl, channel: 'nightly' }],

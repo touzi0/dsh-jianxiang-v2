@@ -137,10 +137,47 @@ const INJECTIONS = [
       ],
     ],
   },
+  {
+    // 坚祥：复制/分支按钮改「官方图标 + 中文文字」（用户决策 2026-09-23）；
+    // 字体参数逐条照抄官方用量/用时 pill（同字号、同行高，基线自然对齐）。
+    // 并给按钮行定序：复制1 →（压缩2，由 manual-compact 提供）→ 分支3 →（朗读4）→ 用量5 → 时间6，
+    // 只重排这些；其余元素不动，用量/用时/时间保持在按钮右侧的原位。
+    target: 'src/client/chat/MessageIconActions.tsx',
+    edits: [
+      [
+        '        <button type="button" className={css.action} aria-label={copied ? t(\'copied\') : t(\'copy\')} onClick={onCopy}>\n'
+        + '          {copied ? <IconCheckOutline16 /> : <IconCopyOutline16 />}\n'
+        + '        </button>',
+        '        <button type="button" data-jx-text-action className={css.action} style={{ width: \'auto\', gap: \'4px\', padding: \'0 8px\', fontSize: \'var(--dsh-content-font-size-secondary, 13px)\', lineHeight: \'calc(24px + var(--dsh-content-font-delta, 0px))\', ...(clock === \'end\' ? { order: 1 } : {}) }} aria-label={copied ? t(\'copied\') : t(\'copy\')} onClick={onCopy}>\n'
+        + '          {copied ? <><IconCheckOutline16 />{t(\'copied\')}</> : <><IconCopyOutline16 />{t(\'copy\')}</>}\n'
+        + '        </button>',
+      ],
+      [
+        '            className={css.action}\n'
+        + '            aria-label={t(\'message.branch\')}',
+        '            className={css.action}\n'
+        + '            data-jx-text-action\n'
+        + '            style={{ width: \'auto\', gap: \'4px\', padding: \'0 8px\', fontSize: \'var(--dsh-content-font-size-secondary, 13px)\', lineHeight: \'calc(24px + var(--dsh-content-font-delta, 0px))\', order: 3 }}\n'
+        + '            aria-label={t(\'message.branch\')}',
+      ],
+      [
+        '            <IconBranchOutline16 />',
+        '            <><IconBranchOutline16 />分支</>',
+      ],
+      [
+        '      {usageAction}',
+        '      <span style={{ order: 5, display: \'inline-flex\' }}>{usageAction}</span>',
+      ],
+      [
+        '    <span className={clock === \'start\' ? css.timeStart : css.timeEnd}>',
+        '    <span style={clock === \'end\' ? { order: 6 } : undefined} className={clock === \'start\' ? css.timeStart : css.timeEnd}>',
+      ],
+    ],
+  },
 ]
 
 /** 构建产物必须含有的补丁标记（少一个就说明补丁没生效）。 */
-const MARKERS = ['longNarrationAnchor', 'tailWindowAnchor', 'olderSentinelRef', 'foldHoldRow', '拼命干活中…']
+const MARKERS = ['longNarrationAnchor', 'tailWindowAnchor', 'olderSentinelRef', 'foldHoldRow', '拼命干活中…', 'data-jx-text-action', '分支']
 
 /** 构建期间需要原样恢复的产物。 */
 const ARTIFACTS = ['lib/client.js', 'lib/index.js']

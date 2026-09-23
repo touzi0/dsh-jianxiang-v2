@@ -212,26 +212,25 @@ export function pinCurrentBlank(
  * 这里不能用归档来实现同样效果：`clearArchivedCurrent()` 会在每次列表快照
  * 变化时清空「当前打开但已归档」的会话，数字助理自己说话就会把用户踢出去。
  */
-const JX_ASSISTANT_SESSION_ID = 'session-jx-assistant' as SessionId
+// 2026-09-23：隐藏逻辑按用户要求注释（见《修改记录》条目 98）。
+// const JX_ASSISTANT_SESSION_ID = 'session-jx-assistant' as SessionId
 
 function sessionVisible(session: SessionSummary, current: SessionId | undefined, archived: ReadonlySet<SessionId>): boolean {
   return session.origin !== 'subagent'
     && !archived.has(session.id)
-    && session.id !== JX_ASSISTANT_SESSION_ID
+    // 2026-09-23：按用户要求取消数字助理会话行的隐藏——派发进它工作区的其他对话
+    // 被整组连坐藏掉，找不到入口。原判据见《修改记录》条目 74/87。
+    // && session.id !== JX_ASSISTANT_SESSION_ID
     && (!session.blank || session.id === current)
 }
 
 /**
- * 装载着数字助理会话的工作区（就是它的落脚工作区）整体不显示：
+ * （2026-09-23 已停用）装载着数字助理会话的工作区（就是它的落脚工作区）整体不显示：
  * 数字助理对用户只存在于侧边栏「新建会话」下面那一行入口，工作区分组与会话行都不出现。
  * 宿主侧仍然把它挂在这个工作区里——不挂的话客户端 `openSession` 会静默失败。
  * @param workspace - one workspace view.
  * @returns whether this workspace is the digital assistant's home.
  */
-function isAssistantHomeWorkspace(workspace: WorkspaceView): boolean {
-  return workspace.sessionIds.includes(JX_ASSISTANT_SESSION_ID)
-}
-
 /**
  * A blank session is the selected Workspace's provisional New Session row;
  * its canonical title never enters search (blank rows are query-excluded)
@@ -291,11 +290,12 @@ function groupByWorkspace(
   const groups: Group[] = []
   const accounted = new Set<SessionId>()
   for (const workspace of workspaces) {
-    // 数字助理的落脚工作区整体不显示；记账照做，免得它的会话被当成 stray 落到「未分组」。
-    if (isAssistantHomeWorkspace(workspace)) {
-      for (const id of workspace.sessionIds) accounted.add(id)
-      continue
-    }
+    // 2026-09-23：按用户要求注释掉「数字助理落脚工作区整组隐藏」——一旦有别的
+    // 会话被派发进这个工作区，整组（工作区+全部对话）都会消失，用户找不到对话。
+    // if (isAssistantHomeWorkspace(workspace)) {
+    //   for (const id of workspace.sessionIds) accounted.add(id)
+    //   continue
+    // }
     const members: SessionSummary[] = []
     for (const id of workspace.sessionIds) {
       const summary = list.byId[id]

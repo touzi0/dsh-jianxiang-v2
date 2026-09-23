@@ -1,39 +1,43 @@
 {
-  "name": "dsh-manual-compact",
-  "version": "0.1.0",
-  "description": "手动压缩：每一轮回复的按钮行里加「压缩到此轮为止」按钮，复用官方压缩机制把该轮及之前的内容压成摘要，之后的轮次原样保留",
-  "type": "module",
-  "private": true,
-  "main": "./lib/index.js",
-  "exports": {
-    ".": "./lib/index.js",
-    "./client": "./lib/client.js",
-    "./package.json": "./package.json"
-  },
-  "dsh": {
-    "client": {
-      "inject": [
-        "@deepseek-ai/dsh-api-remotes",
-        "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-chat",
-        "@deepseek-ai/dsh-client-ui-session"
-      ],
-      "platform": "web"
-    }
-  },
-  "jx": {
-    "description": "手动压缩：每轮回复的按钮行（点赞旁）多一个「压缩到此轮为止」按钮，点哪一轮就把该轮及之前的内容用官方压缩机制压成摘要，之后的轮次原样保留",
-    "defaultEnabled": true
-  },
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-typert-protocol": "*",
-    "@deepseek-ai/dsh-compaction": "*",
-    "@deepseek-ai/dsh-session": "*",
-    "@deepseek-ai/dsh-llm": "*"
-  },
-  "scripts": {
-    "build": "node build.mjs"
-  }
+    "name":  "dsh-manual-compact",
+    "version":  "0.1.0",
+    "description":  "手动压缩：每一轮回复的按钮行里加「压缩到此轮为止」按钮，复用官方压缩机制把该轮及之前的内容压成摘要，之后的轮次原样保留",
+    "type":  "module",
+    "private":  true,
+    "main":  "./lib/index.js",
+    "exports":  {
+                    ".":  "./lib/index.js",
+                    "./client":  "./lib/client.js",
+                    "./package.json":  "./package.json"
+                },
+    "dsh":  {
+                "client":  {
+                               "inject":  [
+                                              "@deepseek-ai/dsh-api-remotes",
+                                              "@deepseek-ai/dsh-client-locale",
+                                              "@deepseek-ai/dsh-client-ui-conversation",
+                                              "@deepseek-ai/dsh-client-ui-chat",
+                                              "@deepseek-ai/dsh-client-ui-session"
+                                          ],
+                               "platform":  "web"
+                           }
+            },
+    "jx":  {
+               "description":  "手动压缩：每轮回复的按钮行里多一个「压缩到此轮为止」按钮（上下箭头向中间横线收拢的图标），点哪一轮就把该轮及之前的内容用官方压缩机制压成摘要，之后的轮次原样保留。附带禁用官方点赞/点踩（message-feedback 只写会话日志，不发官方也不给模型，按用户决策去掉）",
+               "defaultEnabled":  true,
+               "replaces":  [
+                                "message-feedback",
+                                "ui-message-feedback"
+                            ]
+           },
+    "peerDependencies":  {
+                             "@deepseek-ai/cordis":  "*",
+                             "@deepseek-ai/dsh-typert-protocol":  "*",
+                             "@deepseek-ai/dsh-compaction":  "*",
+                             "@deepseek-ai/dsh-session":  "*",
+                             "@deepseek-ai/dsh-llm":  "*"
+                         },
+    "scripts":  {
+                    "build":  "node build.mjs"
+                }
 }

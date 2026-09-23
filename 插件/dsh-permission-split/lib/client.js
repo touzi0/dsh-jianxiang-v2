@@ -217,16 +217,33 @@ var PermissionSplitController = class {
 			};
 		}
 	};
+	/** 上一次发布给订阅者的快照；状态未变（浅比较）时不换引用、不通知。 */
+	published;
 	publish() {
-		this.state = { ...this.state };
+		if (this.published !== void 0) {
+			let same = true;
+			for (const key of Object.keys(this.state)) if (this.state[key] !== this.published[key]) {
+				same = false;
+				break;
+			}
+			if (same) return;
+		}
+		this.published = this.state;
 		for (const fn of [...this.listeners]) fn();
 	}
 	/**
 	* 读取当前授权与预设目录。目录是进程级不变的，只读一次。
+	* 控制器是全插件单例：换会话加载时先把授权表归零，避免上一个会话的
+	* 勾选状态残留显示（拉取失败时尤其误导）。
 	* @param sessionId - 目标会话。
 	*/
 	async load(sessionId) {
 		try {
+			this.state = {
+				...this.state,
+				grants: { ...NO_GRANTS }
+			};
+			this.publish();
 			const grants = await this.jxPermission.get(sessionId);
 			this.state = grants.ok ? {
 				...this.state,
@@ -291,6 +308,17 @@ var PermissionSplitController = class {
 				error: error instanceof Error ? error.message : String(error)
 			};
 		}
+		this.publish();
+	}
+	/**
+	* 展示一条非本地化错误（预设切换失败等），下一次成功操作时清除。
+	* @param message - 错误信息。
+	*/
+	showError(message) {
+		this.state = {
+			...this.state,
+			error: message
+		};
 		this.publish();
 	}
 	/**
@@ -416,16 +444,20 @@ function PermissionSplit(props) {
 	const [pick, setPick] = (0, react.useState)(null);
 	const [confirmation, setConfirmation] = (0, react.useState)(null);
 	const [acknowledged, setAcknowledged] = (0, react.useState)(false);
+	const loadedFor = (0, react.useRef)(void 0);
 	(0, react.useEffect)(() => {
+		if (sessionId === void 0 || loadedFor.current === sessionId) return;
+		loadedFor.current = sessionId;
 		props.load();
-	}, [props.load]);
+	}, [sessionId, props.load]);
 	(0, react.useEffect)(() => {
 		if (!open) return void 0;
 		const onKey = (event) => {
 			if (event.key === "Escape") setOpen(false);
 		};
 		const onDown = (event) => {
-			if (event.target?.closest(".jx-ps-anchor") === null) setOpen(false);
+			const target = event.target;
+			if (target === null || target.closest(".jx-ps-anchor") === null) setOpen(false);
 		};
 		document.addEventListener("keydown", onKey);
 		document.addEventListener("mousedown", onDown);
@@ -440,10 +472,12 @@ function PermissionSplit(props) {
 	const current = options.find((option) => option.value === currentValue);
 	const currentLabel = current === void 0 ? permissionLabel(currentValue ?? "", currentValue ?? "", t) : permissionLabel(current.value, current.name, t);
 	const busy = pick !== null || confirmation !== null || state.busy;
-	/** 官方同款提交路径：提交 `/permission <preset>` 命令行。 */
+	/** 官方同款提交路径：提交 `/permission <preset>` 命令行；失败要可见。 */
 	const submit = (id) => {
 		setPick(id);
-		props.selectPreset(id).catch(() => void 0).then(() => {
+		props.selectPreset(id).catch((error) => {
+			props.reportError(error instanceof Error ? error.message : String(error));
+		}).then(() => {
 			setPick(null);
 		});
 	};
@@ -636,13 +670,16 @@ async function apply(ctx) {
 					},
 					selectPreset: async (preset) => {
 						const live = face.sessions.binding(sessionId)?.session;
-						if (live === void 0) return;
+						if (live === void 0) throw new Error("session unavailable");
 						const result = await live.command(`/permission ${preset}`);
-						if (!result.ok) throw new Error(`${COPY.zh.failed}: ${result.error.message}`);
+						if (!result.ok) throw new Error(result.error.message);
 						controller.setCurrent(preset);
 					},
 					setGrant: async (capability, granted) => {
 						await controller.setGrant(sessionId, capability, granted);
+					},
+					reportError: (message) => {
+						controller.showError(message);
 					}
 				})
 			}, PermissionSplit));

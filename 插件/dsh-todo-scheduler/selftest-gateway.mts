@@ -120,31 +120,28 @@ const gateway = new JxTodoGateway(ctx as never, dataFile)
 record('TODO_DATA_FILE 指向 dsh-home\\jx-todo\\tasks.json', TODO_DATA_FILE.includes('jx-todo') && TODO_DATA_FILE.endsWith('tasks.json'))
 record('构造时创建了数据文件', existsSync(dataFile))
 
-// 1) 种子任务（两条不定时：手机端访问 + 数字助理未读提示）。
+// 1) 首启种子：只有一条示例任务（不定时、AI 任务），不再预置任何真实待办。
 const first = await gateway.listTasks()
-const seed = first.tasks.find(task => task.id === 'task-jx-mobile-access')
-is('首启种子任务标题', seed?.title, '手机端访问：解锁局域网 + 扫码入口')
-is('种子任务是不定时', seed?.schedule.kind, 'manual')
-is('种子任务是 AI 任务', seed?.executor, 'assistant')
-is('种子任务已启用', seed?.enabled, true)
-record('种子任务描述包含实施方案引用', seed?.description.includes('手机端访问实施方案.md') === true)
-is('种子任务未指定工作区', seed?.target.workspaceId, '')
-const unread = first.tasks.find(task => task.id === 'task-assistant-unread')
-is('第二条种子任务标题', unread?.title, '数字助理主对话：有新回复但前端没有提示')
-is('第二条种子也是不定时', unread?.schedule.kind, 'manual')
-record('第二条种子描述含未读机制线索', unread?.description.includes('dsh-unread') === true)
-is('首启恰好两条种子', first.tasks.length, 2)
+const sample = first.tasks.find(task => task.id === 'task-sample-dispatch')
+is('首启示例任务标题', sample?.title, '示例任务：点「立即执行」看看它怎么转交给数字助理')
+is('示例任务是不定时', sample?.schedule.kind, 'manual')
+is('示例任务是 AI 任务', sample?.executor, 'assistant')
+is('示例任务已启用', sample?.enabled, true)
+record('示例任务说明自己是示例且不会真干活',
+  sample?.description.includes('示例待办') === true && sample?.description.includes('不要执行任何实际操作') === true)
+is('示例任务未指定工作区', sample?.target.workspaceId, '')
+is('首启恰好一条示例', first.tasks.length, 1)
 is('状态里的数据文件路径', (await gateway.status()).dataFile, dataFile)
 
 // 2) AI 任务执行 = 转交数字助理（无工作区/模型设置、不新建会话）。
-const handed = await gateway.runNow({ id: 'task-jx-mobile-access' })
+const handed = await gateway.runNow({ id: 'task-sample-dispatch' })
 is('AI 任务转交成功', handed.ok, true)
 is('ensure() 被调一次', ensureCalls, 1)
 is('没有为待办任务新建会话', created.length, 0)
 const handedMessage = assistantAgent.followups[0] as { content: Array<{ type: string, text: string }>, source: { kind: string } }
 is('转交消息按用户消息显示', handedMessage.source.kind, 'user')
-record('转交消息含任务标题', handedMessage.content[0]!.text.includes('手机端访问'))
-record('转交消息含描述原文', handedMessage.content[0]!.text.includes('局域网'))
+record('转交消息含任务标题', handedMessage.content[0]!.text.includes('示例任务'))
+record('转交消息含描述原文', handedMessage.content[0]!.text.includes('转交'))
 record('转交消息标注手动执行', handedMessage.content[0]!.text.includes('手动执行'))
 const handedRecord = (await gateway.listTasks()).records.find(item => item.sessionId === ASSISTANT_ID)
 is('转交记录立即完成', handedRecord?.status, 'ok')
@@ -193,10 +190,10 @@ is('任务状态转失败', (await gateway.listTasks()).tasks.find(item => item.
 
 // 4) updateTask 切换任务类型：AI → 程序（缺命令要拒绝）。
 threw = ''
-try { await gateway.updateTask({ id: 'task-jx-mobile-access', patch: { executor: 'command', target: { workspaceId: 'ws-1' } } }) } catch (error) { threw = String(error) }
+try { await gateway.updateTask({ id: 'task-sample-dispatch', patch: { executor: 'command', target: { workspaceId: 'ws-1' } } }) } catch (error) { threw = String(error) }
 record('AI 任务改成程序任务但没命令时拒绝', threw.includes('命令'))
 const switched = (await gateway.updateTask({
-  id: 'task-jx-mobile-access',
+  id: 'task-sample-dispatch',
   patch: { executor: 'command', target: { workspaceId: 'ws-1' }, command: { command: 'git', args: 'status' } },
 })).task
 is('切换后的类型', switched.executor, 'command')
@@ -285,25 +282,25 @@ const migrated = new JxTodoGateway(makeCtx() as never, v1File)
 const migratedTasks = (await migrated.listTasks()).tasks
 const migratedTask = migratedTasks.find(item => item.id === 'task-old')
 is('v1 任务迁移后是 AI 任务', migratedTask?.executor, 'assistant')
-is('v1 迁移时补上两条预置任务', migratedTasks.filter(item => item.id === 'task-jx-mobile-access' || item.id === 'task-assistant-unread').length, 2)
+is('v1 迁移时不再补种任何预置任务', migratedTasks.filter(item => item.id === 'task-sample-dispatch' || item.id === 'task-jx-mobile-access').length, 0)
 const migratedRaw = JSON.parse(readFileSync(v1File, 'utf8')) as { version: number }
 is('迁移后数据文件版本是 2', migratedRaw.version, 2)
 rmSync(v1Dir, { recursive: true, force: true })
 
-// 8b) 补种幂等：已有文件缺某条种子时补上；在场条目的用户改动不覆盖。
+// 8b) 已有数据不被改动：启动时不会往历史清单里补种示例任务。
 const topUpDir = mkdtempSync(join(tmpdir(), 'jx-todo-topup-'))
 const topUpFile = join(topUpDir, 'tasks.json')
 writeFileSync(topUpFile, JSON.stringify({
   version: 2,
-  tasks: [{ id: 'task-jx-mobile-access', title: '用户改过的标题', description: '用户改过的描述', enabled: false, executor: 'assistant', schedule: { kind: 'manual' }, target: { workspaceId: '' }, createdAt: 0, updatedAt: 0 }],
+  tasks: [{ id: 'task-user-own', title: '用户自己的任务', description: '用户自己的描述', enabled: false, executor: 'assistant', schedule: { kind: 'manual' }, target: { workspaceId: '' }, createdAt: 0, updatedAt: 0 }],
   records: [],
 }, null, 2), 'utf8')
 const topUp = new JxTodoGateway(makeCtx() as never, topUpFile)
 const topUpTasks = (await topUp.listTasks()).tasks
-is('缺的未读提示种子被补上', topUpTasks.some(item => item.id === 'task-assistant-unread'), true)
-const kept = topUpTasks.find(item => item.id === 'task-jx-mobile-access')
-is('在场条目的用户改动不被覆盖', kept?.title, '用户改过的标题')
-is('在场条目的停用状态保留', kept?.enabled, false)
+is('已有清单不会被补种示例任务', topUpTasks.some(item => item.id === 'task-sample-dispatch'), false)
+is('已有清单条数不变', topUpTasks.length, 1)
+is('用户自己的任务保留', topUpTasks.find(item => item.id === 'task-user-own')?.title, '用户自己的任务')
+is('用户停用状态保留', topUpTasks.find(item => item.id === 'task-user-own')?.enabled, false)
 rmSync(topUpDir, { recursive: true, force: true })
 
 // 9) 损坏文件：改名保留 + 种子恢复。
@@ -312,7 +309,7 @@ const brokenFile = join(brokenDir, 'tasks.json')
 writeFileSync(brokenFile, '{oops', 'utf8')
 const third = new JxTodoGateway(makeCtx() as never, brokenFile)
 const thirdView = await third.listTasks()
-is('坏文件场景恢复出两条种子任务', thirdView.tasks.filter(item => item.id === 'task-jx-mobile-access' || item.id === 'task-assistant-unread').length, 2)
+is('坏文件场景重建出一条示例任务', thirdView.tasks.length === 1 && thirdView.tasks[0]?.id === 'task-sample-dispatch', true)
 const leftovers = readdirSync(brokenDir)
 record('坏文件被改名保留（.bad- 前缀在场，旁有重建的新文件）',
   leftovers.some(name => name.startsWith('tasks.json.bad-')) && leftovers.includes('tasks.json'))
