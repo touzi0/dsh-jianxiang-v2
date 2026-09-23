@@ -20,7 +20,8 @@ async function main(): Promise<void> {
     profile: 'desktop',
     resolutionMode: process.argv[5] === 'runtime' ? 'runtime' : 'link',
     resolvedProfile: { profile, installAnchor },
-    patchFiles: [],
+    // 坚祥模组层：Electron 主进程经 DSH_JX_PATCH 传入预生成的补丁文件
+    patchFiles: process.env.DSH_JX_PATCH === undefined ? [] : [process.env.DSH_JX_PATCH],
     args: ['--no-open', '--port', '19387'],
     ...(process.argv[6] === undefined ? {} : {
       packageManager: {

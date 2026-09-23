@@ -10,5 +10,6 @@
   "dsh-permission-split": true,
   "dsh-ssh-rm-rewrite": false,
   "dsh-ssh-review": true,
-  "dsh-transcript-fold": true
+  "dsh-transcript-fold": true,
+  "dsh-float-clamp": true
 }

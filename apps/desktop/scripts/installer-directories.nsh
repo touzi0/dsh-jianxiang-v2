@@ -125,6 +125,21 @@ FunctionEnd
 !macro dshFinishDirectories
   StrCpy $dshNewMoved ""
   ${If} $dshOldMoved == "1"
+    ; 坚祥便携数据目录：删除旧目录前把 dsh-home 搬回新目录（升级保数据）。
+    ${If} ${FileExists} "$dshOldDirectory\dsh-home\*.*"
+      ClearErrors
+      Rename "$dshOldDirectory\dsh-home" "$dshFinalDirectory\dsh-home"
+      ${If} ${Errors}
+        ; 目录被占用等导致 Rename 失败时退化为复制；仍失败则保留旧目录等待下次安装
+        ClearErrors
+        CopyFiles /SILENT "$dshOldDirectory\dsh-home" "$dshFinalDirectory"
+        ${If} ${Errors}
+          DetailPrint "dsh-home preserved at: $dshOldDirectory"
+          StrCpy $dshOldMoved ""
+          Return
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
     RMDir /r "\\?\$dshOldDirectory"
     StrCpy $dshOldMoved ""
   ${EndIf}

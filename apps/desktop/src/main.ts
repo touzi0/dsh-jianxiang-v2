@@ -2,7 +2,7 @@ import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
 import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   app,
@@ -39,6 +39,15 @@ import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
 import { DesktopPolicyTestAuth } from './policy-test-auth.ts'
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
+import { prepareJxModLayer } from './jx-desktop.ts'
+
+// 坚祥发行版默认值：便携式数据目录（随安装目录，不在 C 盘 AppData 留数据），遥测默认关闭。
+if (app.isPackaged) {
+  const portableRoot = join(dirname(process.execPath), 'dsh-home')
+  if (process.env.DSH_HOME === undefined) process.env.DSH_HOME = portableRoot
+  app.setPath('userData', join(portableRoot, 'electron-data'))
+}
+if (process.env.DSH_TELEMETRY_DISABLED === undefined) process.env.DSH_TELEMETRY_DISABLED = '1'
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => {}
@@ -94,7 +103,7 @@ function runtimeResources(): RuntimeResources {
     ?? (development ? join(app.getAppPath(), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs')
       : join(process.resourcesPath, 'runtime', 'pnpm', 'bin', 'pnpm.mjs'))
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
-    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
+    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(process.resourcesPath, 'dsh'))
   return { node, nodeBin, pnpm, dsh }
 }
 
@@ -254,6 +263,10 @@ async function main(): Promise<void> {
       development ? 'link' : 'runtime', resources)
     return {
       start: async () => {
+        const jxPatch = await prepareJxModLayer(join(process.resourcesPath, 'jx-plugins'),
+          join(resources.dsh, 'node_modules'), process.env.DSH_HOME ?? join(app.getPath('appData'), '坚祥数字助理'))
+        if (jxPatch === undefined) delete process.env.DSH_JX_PATCH
+        else process.env.DSH_JX_PATCH = jxPatch
         const ready = await host.start()
         hostCookie = await authenticateWebHost(ready.url)
         hostUrl = ready.url
@@ -576,7 +589,7 @@ async function main(): Promise<void> {
   })
 
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: '坚祥数字助理',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',

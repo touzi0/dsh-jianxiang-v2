@@ -1,7 +1,7 @@
 /**
  * 浏览器半边自测：把已构建的 `lib/client.js` 当模块工厂加载，在 **真 jsdom** 里造一个
  * 官方「新建会话」按钮，喂假 ctx 跑 `apply()`，断言：
- *   - 新入口就是克隆官方按钮插在它正下方（同款类名 → 同款样式），图标换成小人、文字是「数字助理」；
+ *   - 新入口就是克隆官方按钮插在它正下方（同款类名 → 同款样式），图标换成圆脸、文字是「数字助理」；
  *   - 点击它能打开数字助理会话（ensure → openSession）；
  *   - 兜底的面板槽注册仍在，且那行被 CSS 藏起来（避免出现两次）；
  *   - 官方重渲染把它移除后能自己补回来，卸载时清理干净。
@@ -156,12 +156,15 @@ record('apply() 返回清理函数', typeof dispose === 'function')
 record('$mount 挂了 jxAssistant Remote', mounts.length === 1
   && mounts[0]?.descriptors.some(item => item.service === 'jxAssistant' && item.method === 'ensure'))
 
-// ---- 新入口：克隆官方按钮、插在它下面、图标是小人、文字是「数字助理」----
+// ---- 新入口：克隆官方按钮、插在它下面、图标是圆脸、文字是「数字助理」----
 const clone = official.nextElementSibling as HTMLElement | null
 record('入口插在「新建会话」正下方', clone !== null && clone.hasAttribute('data-jx-assistant-entry'))
 record('入口沿用官方类名（样式与折叠态跟着官方走）', (clone?.getAttribute('class') ?? '').includes('newSession'))
-record('入口图标换成了小人', (clone?.querySelector('svg')?.outerHTML ?? '').includes('11.0307'))
-record('入口文字是「数字助理主对话」', (clone?.textContent ?? '').trim() === '数字助理主对话')
+record('入口图标换成了圆脸（data-da-face，默认待机态）', (() => {
+  const face = clone?.querySelector('[data-da-face]')
+  return face !== null && face.getAttribute('data-state') === 'idle'
+})())
+record('入口文字是「数字助理主对话」', (clone?.querySelector('span')?.textContent ?? '').trim() === '数字助理主对话')
 record('入口 aria-label 正确', clone?.getAttribute('aria-label') === '数字助理主对话')
 record('兜底样式已注入（藏掉面板槽那一行）', document.getElementById('jx-digital-assistant-entry-style') !== null)
 

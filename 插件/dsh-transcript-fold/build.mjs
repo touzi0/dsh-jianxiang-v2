@@ -36,6 +36,14 @@ const PATCHES = [
  */
 const INJECTIONS = [
   {
+    // 坚祥：去掉「深度求索中...」这类品牌口吻的等待文案，换成中性的干活说法。
+    target: 'src/client/locale.ts',
+    edits: [
+      ["  'chat.deepDiving': '深度求索中...',", "  'chat.deepDiving': '拼命干活中…',"],
+      ["  'chat.deepDiving': 'Deep diving...',", "  'chat.deepDiving': 'Working hard…',"],
+    ],
+  },
+  {
     target: 'src/client/chat/ChatView.tsx',
     edits: [
       [
@@ -132,7 +140,7 @@ const INJECTIONS = [
 ]
 
 /** 构建产物必须含有的补丁标记（少一个就说明补丁没生效）。 */
-const MARKERS = ['longNarrationAnchor', 'tailWindowAnchor', 'olderSentinelRef', 'foldHoldRow']
+const MARKERS = ['longNarrationAnchor', 'tailWindowAnchor', 'olderSentinelRef', 'foldHoldRow', '拼命干活中…']
 
 /** 构建期间需要原样恢复的产物。 */
 const ARTIFACTS = ['lib/client.js', 'lib/index.js']

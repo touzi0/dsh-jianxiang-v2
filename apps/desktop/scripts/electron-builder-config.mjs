@@ -78,8 +78,8 @@ export function createElectronBuilderConfig(
   return {
     appId,
     extraMetadata: { dshDesktopAppId: appId, dshMandatoryUpdatePolicy: policy },
-    productName: 'DeepSeek Harness',
-    artifactName: 'deepseek-harness-${version}-${os}-${arch}.${ext}',
+    productName: '坚祥数字助理',
+    artifactName: 'jianxiang-assistant-${version}-${os}-${arch}.${ext}',
     directories: { output: unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts },
     asar: true,
     electronDist: buildPaths.electron,
@@ -104,9 +104,6 @@ export function createElectronBuilderConfig(
       'lib/preload-update-dialog.cjs',
       'renderer/**/*',
       'package.json',
-      { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
-      // electron-builder excludes a source directory's root node_modules.
-      { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
     ],
     asarUnpack: [
       '**/*.{node,dylib,dll,so,exe}',
@@ -117,6 +114,15 @@ export function createElectronBuilderConfig(
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
+      // 坚祥：dsh 宿主闭包以真实文件分发（不入 asar），模组 peer junction 才能在 Host 子进程解析
+      { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
+      { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+      // 坚祥模组层：随包分发 插件\（排除 junction、临时目录与生成物，启动时由主进程自愈/重生成）
+      {
+        from: fileURLToPath(new URL('../../../插件', import.meta.url)),
+        to: 'jx-plugins',
+        filter: ['**/*', '!**/node_modules', '!**/node_modules/**', '!.垃圾站/**', '!.permission-split-backup/**', '!**/smoke-*.mjs', '!*.zip', '!.jx-mods.patch.yml'],
+      },
     ],
     mac: {
       icon: fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url)),

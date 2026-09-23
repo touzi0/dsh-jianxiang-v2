@@ -49,12 +49,50 @@ function findNewSessionButton(): HTMLElement | undefined {
   return undefined
 }
 
-/** 官方 IconUserOutline16 的路径，按原按钮的尺寸渲染成一个小人。 */
-function userIconSvg(size: string): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
-    + '<path d="M11.0307 5.46369C11.0305 3.78995 9.6734 2.43357 7.99961 2.43357C6.32601 2.43379 4.96972 3.79009 4.96949 5.46369C4.96949 7.13748 6.32587 8.49455 7.99961 8.49477C9.67354 8.49477 11.0307 7.13762 11.0307 5.46369ZM12.3163 5.46369C12.3163 7.84777 10.3837 9.78042 7.99961 9.78042C5.61572 9.7802 3.68288 7.84763 3.68288 5.46369C3.6831 3.07993 5.61586 1.14718 7.99961 1.14695C10.3836 1.14695 12.3161 3.0798 12.3163 5.46369Z" fill="currentColor"/>'
-    + '<path d="M8.00002 10.3316C11.7343 10.3316 14.1864 11.8997 15.0387 14.4445L14.4292 14.6483L13.8197 14.8531C13.1955 12.9893 11.3673 11.6182 8.00002 11.6182C4.63277 11.6182 2.80455 12.9893 2.18031 14.8531L1.5708 14.6483L0.961304 14.4445C1.81368 11.8997 4.26579 10.3316 8.00002 10.3316Z" fill="currentColor"/>'
-    + '</svg>'
+/** 侧边栏入口的图标尺寸：官方行图标是 14px，这张脸 14px 下细节不清，按用户选定的 22px 渲染。 */
+const DA_ICON_SIZE = '22'
+
+/** 竖直「超椭圆」眼睛（n=3，介于椭圆与胶囊之间：中段有短竖直直线、两头圆收），中心在原点。 */
+const DA_EYE_PATH = 'M3.00,0.00L2.93,2.44L2.73,3.78L2.38,4.76L1.89,5.45L1.22,5.86L0.00,6.00L-1.22,5.86L-1.89,5.45L-2.38,4.76L-2.73,3.78L-2.93,2.44L-3.00,0.00L-2.93,-2.44L-2.73,-3.78L-2.38,-4.76L-1.89,-5.45L-1.22,-5.86L0.00,-6.00L1.22,-5.86L1.89,-5.45L2.38,-4.76L2.73,-3.78L2.93,-2.44L3.00,0.00Z'
+
+/** 图标内的动画。完成态是「眼睛压扁成线 → 笑眼弧线同帧弹出」，任意时刻都有可见元素，无空档。 */
+const DA_FACE_CSS = `
+[data-state] .da-eye,[data-state] .da-eyes{transform-box:fill-box;transform-origin:center}
+.da-smile{opacity:0}
+[data-state="idle"] .da-eye{animation:da-blink 4.5s ease-in-out infinite}
+[data-state="thinking"] .da-eyes{animation:da-scan 2.2s ease-in-out infinite}
+[data-state="thinking"] .da-eye{transform:scaleY(.55)}
+[data-state="done"] .da-eye{animation:da-squish 6s cubic-bezier(.5,0,.5,1) infinite}
+[data-state="done"] .da-smile{animation:da-pop 6s cubic-bezier(.5,0,.5,1) infinite}
+@keyframes da-blink{0%,86%,100%{transform:scaleY(1)}90%,92%{transform:scaleY(.1)}}
+@keyframes da-scan{0%,100%{transform:translateX(0)}30%{transform:translateX(1.8px)}50%{transform:translateX(0)}80%{transform:translateX(-1.8px)}}
+@keyframes da-squish{0%,7%{transform:scaleY(1)}12%{transform:scaleY(.06)}86%{transform:scaleY(.06)}91%,100%{transform:scaleY(1)}}
+@keyframes da-pop{0%,11.5%{opacity:0}15%,85%{opacity:1}88.5%,100%{opacity:0}}
+[data-da-face]{transform-box:fill-box;transform-origin:center;transition:transform .22s ease}
+[data-da-face]:hover,button:hover [data-da-face]{transform:rotate(11deg)}
+[data-da-face]:hover .da-eyes,button:hover [data-da-face] .da-eyes{animation:da-hover 1s ease-in-out infinite}
+[data-da-face][data-state="done"]:hover .da-eyes,button:hover [data-da-face][data-state="done"] .da-eyes{animation:none}
+@keyframes da-hover{0%,100%{transform:translateX(0)}25%{transform:translateX(1.4px)}50%{transform:translateX(0)}75%{transform:translateX(-1.4px)}}
+@media (prefers-reduced-motion:reduce){[data-state] .da-eye,[data-state] .da-eyes,.da-smile{animation:none!important}[data-state="done"] .da-smile{opacity:1}[data-da-face],[data-da-face]:hover,button:hover [data-da-face]{transform:none;transition:none}[data-da-face]:hover .da-eyes,button:hover [data-da-face] .da-eyes{animation:none!important}}
+`
+
+/**
+ * 数字助理对话图标：圆脸 + 一对实心大眼。三态由 `data-state` 驱动——
+ * idle 待机偶发眨眼 / thinking 压眼左右扫视 / done 笑眼弹出（无空档）。
+ * @param size - 渲染尺寸（px 字符串），与官方按钮图标同宽。
+ * @param state - 初始状态；侧边栏入口默认 idle。
+ */
+/** 眼睛中心 y：脸心是 24；上移到 22.5（V1 档）留出「脑门」，小尺寸下更像五官。 */
+const DA_EYE_CY = 22.5
+
+function assistantFaceSvg(size: string, state: 'idle' | 'thinking' | 'done' = 'idle'): string {
+  const eye = (cx: number) => `<g transform="translate(${cx} ${DA_EYE_CY})"><path class="da-eye" d="${DA_EYE_PATH}" fill="currentColor"/></g>`
+  return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" data-da-face data-state="${state}">`
+    + '<circle cx="24" cy="24" r="15.5" fill="none" stroke="currentColor" stroke-width="2.6"/>'
+    + `<g class="da-eyes">${eye(17.5)}${eye(30.5)}</g>`
+    + '<g class="da-smile" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round">'
+    + '<path d="M14.8 23 Q17.5 19.5 20.2 23"/><path d="M27.8 23 Q30.5 19.5 33.2 23"/></g>'
+    + `<style>${DA_FACE_CSS}</style></svg>`
 }
 
 /**
@@ -104,7 +142,10 @@ function installSidebarEntry(enter: () => Promise<void>, labelOf: () => string):
     clone.setAttribute('aria-label', label)
     clone.removeAttribute('aria-current')
     const icon = clone.querySelector('svg')
-    if (icon !== null) icon.outerHTML = userIconSvg(icon.getAttribute('width') ?? '14')
+    if (icon !== null) icon.outerHTML = assistantFaceSvg(DA_ICON_SIZE)
+    const setState = (state: 'idle' | 'thinking' | 'done'): void => {
+      clone.querySelector('[data-da-face]')?.setAttribute('data-state', state)
+    }
     for (const span of clone.querySelectorAll('span')) {
       if ((span.textContent ?? '').trim() !== '') {
         span.textContent = label
@@ -116,7 +157,15 @@ function installSidebarEntry(enter: () => Promise<void>, labelOf: () => string):
       // 别让事件冒到 React 的 root 委托上：克隆节点不在 fiber 树里，冒泡过去会被算给
       // 它最近的 fiber 祖先，可能触发无关的容器级 onClick。
       event.stopPropagation()
-      void enter().catch((reason: unknown) => {
+      setState('thinking')
+      void enter().then(() => {
+        setState('done')
+        window.setTimeout(() => {
+          const face = clone.querySelector('[data-da-face]')
+          if (face?.getAttribute('data-state') === 'done') setState('idle')
+        }, 4200)
+      }).catch((reason: unknown) => {
+        setState('idle')
         console.error('[digital-assistant] 打开失败:', reason)
         flashFailure(clone, reason)
       })
@@ -199,9 +248,10 @@ function AssistantPanel(props: { enter: () => Promise<void>, t: (key: string) =>
   )
 }
 
-/** 兜底面板行里的图标（正常路径下这行是隐藏的）。 */
+/** 兜底面板行里的图标（正常路径下这行是隐藏的）：同一张圆脸，静态待机形态。 */
 function AssistantPanelIcon(props: { size: number }) {
-  return <IconSparkle16 size={props.size} />
+  return <span aria-hidden="true" style={{ display: 'inline-flex', lineHeight: 0 }}
+    dangerouslySetInnerHTML={{ __html: assistantFaceSvg(String(props.size)) }} />
 }
 
 /** 挂载 jxAssistant Remote，装上侧边栏入口，并保留面板槽兜底。 */
