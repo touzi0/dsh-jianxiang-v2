@@ -1,6 +1,6 @@
 # DeepSeek Harness
 
-[English](README.md) | 中文
+[English](README.upstream.md) | 中文
 
 DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
 
@@ -46,7 +46,7 @@ pnpm dsh web
 
 ## 社区与支持
 
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
+- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或问题报告。
 - 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
 - 欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
 
@@ -69,7 +69,7 @@ pnpm dsh web
 
 ## 参与贡献
 
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
+参见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)。
 
 ## 开发
 
@@ -81,11 +81,11 @@ pnpm dsh web
 
 ```bibtex
 @misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
+  title = {DeepSeek Harness: Everything is a Plugin},
+  author = {DeepSeek-AI},
+  year = {2026},
+  publisher = {GitHub},
+  howpublished = {\url{https://github.com/deepseek-ai/deepseek-harness}},
 }
 ```
 
@@ -94,3 +94,7 @@ pnpm dsh web
 [MIT](LICENSE)
 
 第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+---
+
+*这是坚祥定制仓库保留的上游官方中文 README（基于 v0.1.6-alpha.2 基线原文）。坚祥定制说明请看 [README.md](README.md)。*

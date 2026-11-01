@@ -1,75 +1,65 @@
-# DeepSeek Harness
+# 坚祥数字助理 v2
 
-English | [中文](README.zh.md)
+> 写在前面：我很喜欢《半条命 2》里那种「开发者注释」（developer commentary）——研发人员在游戏里留下的一个个小气泡，亲口讲当初为什么这么做、哪里翻过车。这个仓库的 README 就按那个感觉来写：它不是产品文档，是碎碎念。另外坦白讲：下面这些内容是我的碎碎念，经过 AI 整理，所以多少带上了一股 AI 味——凑合看，意思都在。这个仓库主要的作用，其实就是用来聊天的。
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+这是基于 DeepSeek Harness（下称 DSH）做的一套定制发行版。**先泼盆冷水：它的基线是当时刚开源出来的最新版（v0.1.6-alpha.2），现在看已经很旧了**，后面的新版本我没有再跟进用过，所以这里面绝大部分东西并没有「马上拿来用」的价值。把它放出来，是因为里面有几套我觉得挺有意思的思路——插件怎么跟原生共存、为什么不做记忆机制、压缩怎么分层——也许能给同样在做 agent 定制的人一点参考。社区嘛，本来就是互相看看对方是怎么踩坑的。
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+## 起源：从 Pi 到 DSH
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+最早我们是给 Pi 做插件定制的。Pi 太「基础」了——本体给的东西越少，每个人要自己定制的东西就越多；定制的东西越多，社区就越乱，各家做的东西越难组合到一起。后来 DSH 出现了，起码有了一个像样的前端，「一切皆插件」的理念乍一听也挺好，我们就转过来做 DSH 的插件开发了。
 
-## Developer preview
+结果，做起来才知道有多痛苦。
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+## 给 DSH 做插件有多痛苦
 
-Review the [safety notice](SAFETY.md) before running the project.
+两条路都难走：要么去改它已有的插件，容易牵一发动全身出一堆问题；要么新增插件，又很难跟它现有的东西协同。更崩溃的是它原来的模组管理：有时候改完完全在内存里，根本没落盘、没生效；可你要想落盘生效，它就不能热加载。来回给我搞疯掉了。
 
-## Run
+所以我们干脆自己写了个模组管理器（`dsh-mod-manager`），把整套机制重做了：**插件既能热加载，又能落到硬盘**；运行中就能直接替换掉现有的原生插件，还做了很多配套的优化。
 
-### Run from `npm`
+## 跟原生「打架，但不离婚」
 
-Install `Node.js`, then run:
+做插件经常会发现跟原生的冲突了、打架了。但我们又不想把仓库 fork 死——还是想能持续拉取原生的更新，不想自己的东西被上游更新顶掉。
 
-```sh
-npx @deepseek-ai/dsh web
-```
+我们的做法：**把原生插件复制一份过来改**。这样上游更新之后，我们的模组照常按自己的版本跑；同时又留出了跟原生慢慢融合的空间和时间——哪天原生自己做好了（比如前端折叠），我们就可以把模组退掉回归原生。事实上也确实这么发生过：第一版我们在前端下了很大功夫（折叠等等一大堆优化），到第二版，原生自己的折叠能用了，能做的就少了。
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+## 右栏、安全，和一些放弃
 
-### Run from source
+- 右栏做了只读的 **Git 面板**、**计划面板**。计划以前是没有持久化的，我们做了持久化——这部分具体是在 v1 还是 v2 落地的，我现在都记不清了，翻《修改记录》去。
+- **安全机制我们做过，然后放弃了。**在 DSH 自己宣传安全之前，我们就做了不少安全机制跟它对齐。后来想明白了：员工完全可以装别的软件绕过去，或者想方设法绕——客户端侧的这类安全在我们的场景里根本没有价值，后面就不做了。相关模组留在仓库里，当个参考。
+- **手机端适配**（`dsh-remote-mobile`）做得挺不错的，配对码、动态令牌、移动端样式一套都有。
+- **待办/定时任务**（`dsh-todo-scheduler`）是当时 DSH 所缺乏的，我们做了；后来官方也有了原生的。有点可惜，不过留作参考。
 
-To run from a repository checkout:
+## 数字助理：这个仓库里我最想聊的东西
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
-```
+核心理念一句话：**始终只跟一个 AI 对话。**它像一个人一样，始终帮你把事情办好，替你去各种沟通协调。
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+由此有个可能反直觉的决定：**我们没有做记忆机制。**因为有了数字助理，你永远只跟「一个人」沟通，他会知道你的一切——你的喜好、你的性格、你觉得什么叫「好」。这些不是靠一条条「记忆」存出来的，是靠完整的对话史配合压缩留下来的。记忆机制反而容易误导 AI，而且记忆和记忆之间还会打架。对话本身，配合压缩，就是一个永久记忆、超长记忆。而且一旦你发现他「变笨了」、方向错了，当场纠正就行——这比去修一堆互相矛盾的记忆条目容易多了。这个数字助理 8 月份做出来之后一直用得很好，后来我们商业软件的核心，沿用的就是这套理念。
 
-## Community and support
+顺带回答两个「你们为什么不做 XXX」：
 
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
+- **为什么不做专家团？**不是做不了，是我认为专家团基本是个伪概念：预先设定哪个 AI 必须干什么、提前写一堆提示词，价值不大——本质就是预设提示词而已。与其自己手动设，不如让数字助理帮你设。最近大家都在做专家团、super agent，我们觉得核心理念是一回事，而我们的版本效果一直很好，所以拿出来给大家看看。
+- **为什么第二版砍掉了任务面板？**第一版做过，第二版坚决不做了。有了数字助理，就不需要任务面板这类东西了——那一套是旧理念，应该被淘汰。事情交给「人」去安排，而不是你去伺候一个面板。
 
-## Contributing
+## 会话压缩：数字助理的另一半
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+数字助理好用，一半靠上面的理念，另一半靠压缩。会话无限长不现实，我们的做法（坦白说，这一版未必是我最终想要的形态，另一个项目里有打磨完的最终版）：
 
-## Development
+- **只压过去，不碰最近**：最近的聊天保留完整的思考和完整的工具调用，所以 AI 的风格不会因为压缩而「变味」；
+- **分层压缩**：离得越远的记忆越模糊，但最核心的东西会留下来——像人回忆上个月的事，细节糊了，结论还在；
+- **缓存友好**：不浪费 token，前缀缓存命中率很高。
 
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
+## 我的做事原则
 
-For agents, follow [AGENTS.md](AGENTS.md).
+原理尽量简单，效果尽量优秀。这也是我把这一批老项目陆续开源出来的原因——不是它们有多先进，而是里面的思路值得聊。
 
-## Citation
+## 仓库导航
 
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
-```
+- [修改记录.md](修改记录.md) —— 近百条定制记录，每条都有「改了什么 / 为什么 / 怎么验证 / 怎么回退」。想深入了解的，从这里进。
+- [插件/](插件/) —— 24 个自制模组（含模组管理器本体），每个目录里基本都有自己的 README。
+- [插件集中化机制与安装指南.md](插件集中化机制与安装指南.md) · [插件/迁移清单.md](插件/迁移清单.md)
+- 上游官方的 README 原样保留在 [README.upstream.md](README.upstream.md)（[中文版](README.upstream.zh.md)）。
+- 想跑起来（Windows）：`pnpm install && pnpm run build`，然后双击 `启动坚祥.bat`。
 
-## License
+## License 与致谢
 
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+上游 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 由 DeepSeek AI 开发，MIT 协议。本仓库完整保留其 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，坚祥定制部分同样以 MIT 发布。
